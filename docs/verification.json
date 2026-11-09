@@ -1,0 +1,12 @@
+{
+  "version": "0.1.0-dev",
+  "unitTests": 22,
+  "unitFailures": 0,
+  "unitErrors": 0,
+  "nativeNavigationTests": 4,
+  "liveInstallTests": 1,
+  "device": "Android TV API 33 ARM64 emulator, 1920x1080",
+  "lintErrors": 0,
+  "apkSha256": "a0f166445ee635d32cb9dc7baed930953cac090b51fd86a2d29cc0b285f92caa",
+  "apkBytes": 18994531
+}

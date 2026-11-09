@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "apps": {
+    "jellyfin-tv": {
+      "certificateSha256": [
+        "d881796ed2a67ff6ef9f676828723c6b1fa18e09388962cba4abc4a594a69131"
+      ],
+      "checkedAt": 1794238662612,
+      "releases": [
+        {
+          "id": -191099,
+          "tag": "v0.19.10",
+          "name": "Jellyfin 0.19.10",
+          "publishedAt": "",
+          "notes": "官方 APK 开发样本，已检查文件摘要、包名、内部版本与发布签名。完整变更记录请查看此版本的官方发布页；尚未完成 Orbit 的 TV 真机验证。",
+          "prerelease": false,
+          "url": "https://github.com/jellyfin/jellyfin-androidtv/releases/tag/v0.19.10",
+          "assets": [
+            {
+              "id": -191099,
+              "name": "jellyfin-androidtv-v0.19.10-release.apk",
+              "url": "https://github.com/jellyfin/jellyfin-androidtv/releases/download/v0.19.10/jellyfin-androidtv-v0.19.10-release.apk",
+              "size": 21950619,
+              "sha256": "8510a517c99927076082917f41bf306dd7a2546c59d492dd11bde18d6e2e4628",
+              "abi": "universal",
+              "versionCode": 191099,
+              "minSdk": 21,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    "tv-bro": {
+      "certificateSha256": [
+        "1e5124be7e7fcb7a6462b47a42a8567863c6fccc6fe7708cd278be4f43047c75"
+      ],
+      "checkedAt": 1794239018770,
+      "releases": [
+        {
+          "id": -216,
+          "tag": "v2.1.6",
+          "name": "TV Bro 2.1.6",
+          "publishedAt": "2026-06-01T15:09:19Z",
+          "notes": "使用系统 WebView 的独立 APK，未包含 Gecko 引擎。已检查来自作者官方 Release 的包元数据与签名，完整更新说明请查看官方发布页。",
+          "prerelease": false,
+          "url": "https://github.com/truefedex/tv-bro/releases/tag/v2.1.6",
+          "assets": [
+            {
+              "id": -216,
+              "name": "tvbro-2.1.6-generic-geckoExcluded.apk",
+              "url": "https://github.com/truefedex/tv-bro/releases/download/v2.1.6/tvbro-2.1.6-generic-geckoExcluded.apk",
+              "size": 6790605,
+              "sha256": "d8634edfe8d94b4fb9a52005d68a090a7f1e85b7f39c2cf01a25dc9dd60942b2",
+              "abi": "universal",
+              "versionCode": 69,
+              "minSdk": 24,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

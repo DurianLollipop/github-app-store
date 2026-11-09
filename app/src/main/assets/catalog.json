@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "apps": [
+    {
+      "id": "jellyfin-tv",
+      "name": "Jellyfin",
+      "repository": "jellyfin/jellyfin-androidtv",
+      "packageName": "org.jellyfin.androidtv",
+      "category": "影音娱乐",
+      "tagline": "你的媒体，你的主场",
+      "description": "Jellyfin 的官方 Android TV 客户端。连接自己的 Jellyfin 媒体服务器，在电视上浏览与播放电影、剧集、音乐和照片。使用前需要已有的 Jellyfin 服务器；客户端不提供影视内容。",
+      "license": "GPL-2.0",
+      "color": "7955CA",
+      "symbol": "J",
+      "iconUrl": "",
+      "screenshots": [
+        "https://jellyfin.org/assets/images/search-42d87c4c406a5b084480b2590b44e1f9.png",
+        "https://jellyfin.org/assets/images/stillwatching-06f143027549aa006890faae57c33c83.png"
+      ],
+      "mediaSource": "https://jellyfin.org/posts/androidtv-v0.19.0/",
+      "mediaLicense": "CC-BY-ND-4.0，原图展示，归属 Jellyfin 项目",
+      "tvStatus": "作者提供 TV 客户端 · Orbit 尚未真机验证",
+      "certificateSha256": [
+        "d881796ed2a67ff6ef9f676828723c6b1fa18e09388962cba4abc4a594a69131"
+      ],
+      "releases": [
+        {
+          "id": -191099,
+          "tag": "v0.19.10",
+          "name": "Jellyfin 0.19.10",
+          "publishedAt": "",
+          "notes": "官方 APK 开发样本，已检查文件摘要、包名、内部版本与发布签名。完整变更记录请查看此版本的官方发布页；尚未完成 Orbit 的 TV 真机验证。",
+          "prerelease": false,
+          "url": "https://github.com/jellyfin/jellyfin-androidtv/releases/tag/v0.19.10",
+          "assets": [
+            {
+              "id": -191099,
+              "name": "jellyfin-androidtv-v0.19.10-release.apk",
+              "url": "https://github.com/jellyfin/jellyfin-androidtv/releases/download/v0.19.10/jellyfin-androidtv-v0.19.10-release.apk",
+              "size": 21950619,
+              "sha256": "8510a517c99927076082917f41bf306dd7a2546c59d492dd11bde18d6e2e4628",
+              "abi": "universal",
+              "versionCode": 191099,
+              "minSdk": 21,
+              "enabled": true
+            }
+          ]
+        }
+      ],
+      "checkedAt": 1794238662612
+    },
+    {
+      "id": "tv-bro",
+      "name": "TV Bro",
+      "repository": "truefedex/tv-bro",
+      "packageName": "com.phlox.tvwebbrowser",
+      "category": "实用工具",
+      "tagline": "用遥控器，自在浏览",
+      "description": "为电视遥控器设计的开源浏览器。提供标签页、书签、浏览记录、语音搜索与下载管理，使用 Android WebView 浏览网页。具体网站可用性取决于设备的 WebView 版本。",
+      "license": "自定义许可证",
+      "color": "247FBC",
+      "symbol": "B",
+      "iconUrl": "",
+      "screenshots": [],
+      "licenseSource": "https://github.com/truefedex/tv-bro/blob/master/LICENSE.md",
+      "tvStatus": "作者面向 TV 设计 · Orbit 尚未真机验证",
+      "certificateSha256": [
+        "1e5124be7e7fcb7a6462b47a42a8567863c6fccc6fe7708cd278be4f43047c75"
+      ],
+      "releases": [
+        {
+          "id": -216,
+          "tag": "v2.1.6",
+          "name": "TV Bro 2.1.6",
+          "publishedAt": "2026-06-01T15:09:19Z",
+          "notes": "使用系统 WebView 的独立 APK，未包含 Gecko 引擎。已检查来自作者官方 Release 的包元数据与签名，完整更新说明请查看官方发布页。",
+          "prerelease": false,
+          "url": "https://github.com/truefedex/tv-bro/releases/tag/v2.1.6",
+          "assets": [
+            {
+              "id": -216,
+              "name": "tvbro-2.1.6-generic-geckoExcluded.apk",
+              "url": "https://github.com/truefedex/tv-bro/releases/download/v2.1.6/tvbro-2.1.6-generic-geckoExcluded.apk",
+              "size": 6790605,
+              "sha256": "d8634edfe8d94b4fb9a52005d68a090a7f1e85b7f39c2cf01a25dc9dd60942b2",
+              "abi": "universal",
+              "versionCode": 69,
+              "minSdk": 24,
+              "enabled": true
+            }
+          ]
+        }
+      ],
+      "checkedAt": 1794239018770
+    },
+    {
+      "id": "localsend",
+      "name": "LocalSend",
+      "repository": "localsend/localsend",
+      "packageName": "org.localsend.localsend_app",
+      "category": "效率工具",
+      "tagline": "设备之间，轻松传送",
+      "description": "在同一局域网内发送文件与文本的跨平台开源工具，无需账户或云端中转。可以与手机、平板和电脑互传文件。TV 遥控器兼容性尚未验证，部分操作可能需要鼠标。",
+      "license": "Apache-2.0",
+      "color": "168A7F",
+      "symbol": "L",
+      "iconUrl": "",
+      "screenshots": [],
+      "tvStatus": "通用 Android 应用 · TV 操作待验证",
+      "certificateSha256": [],
+      "releases": []
+    },
+    {
+      "id": "newpipe",
+      "name": "NewPipe",
+      "repository": "TeamNewPipe/NewPipe",
+      "packageName": "org.schabi.newpipe",
+      "category": "影音娱乐",
+      "tagline": "轻巧的视频与音频体验",
+      "description": "面向 Android 的轻量开源流媒体前端，支持订阅管理、播放列表及多种媒体服务。服务可用性取决于上游网站。当前为手机界面，TV 遥控器兼容性待验证。",
+      "license": "GPL-3.0",
+      "color": "C63B50",
+      "symbol": "N",
+      "iconUrl": "",
+      "screenshots": [],
+      "tvStatus": "手机界面 · TV 操作待验证",
+      "certificateSha256": [],
+      "releases": []
+    },
+    {
+      "id": "material-files",
+      "name": "Material Files",
+      "repository": "zhanghai/MaterialFiles",
+      "packageName": "me.zhanghai.android.files",
+      "category": "实用工具",
+      "tagline": "文件管理，清晰有序",
+      "description": "简洁的 Android 开源文件管理器，支持本地文件浏览及多种文件操作。访问范围受 Android 存储权限限制。首版作为目录开发样本，TV 遥控器操作尚未实测。",
+      "license": "GPL-3.0",
+      "color": "BE8735",
+      "symbol": "M",
+      "iconUrl": "",
+      "screenshots": [],
+      "tvStatus": "通用 Android 应用 · TV 操作待验证",
+      "certificateSha256": [],
+      "releases": []
+    }
+  ],
+  "generatedAt": 1794239074227
+}
