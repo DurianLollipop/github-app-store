@@ -142,7 +142,7 @@ private fun Modifier.wallpaperSample(scene: SilkScene?, origin: () -> IntOffset)
 }
 
 @Composable internal fun FloatingNavigation(selected: Destination, activeDownloads: Int,
-    requesters: Map<Destination, FocusRequester>, onHomeDown: () -> Boolean, onSelect: (Destination) -> Unit) {
+    requesters: Map<Destination, FocusRequester>, onContentDown: () -> Boolean, onSelect: (Destination) -> Unit) {
     var focused by remember { mutableStateOf<Destination?>(null) }
     BoxWithConstraints(Modifier.fillMaxWidth().height(86.dp).padding(horizontal = 38.dp), contentAlignment = Alignment.Center) {
         val compact = maxWidth < 740.dp
@@ -179,8 +179,8 @@ private fun Modifier.wallpaperSample(scene: SilkScene?, origin: () -> IntOffset)
                             .focusRequester(requesters.getValue(item))
                             .onFocusChanged { state -> if (state.isFocused) focused = item else if (focused == item) focused = null }
                             .onPreviewKeyEvent {
-                                if (it.type == KeyEventType.KeyDown && it.key == Key.DirectionDown && selected == Destination.Discover) {
-                                    onHomeDown()
+                                if (it.type == KeyEventType.KeyDown && it.key == Key.DirectionDown) {
+                                    onContentDown()
                                 } else false
                             }
                             .semantics { this.selected = selected == item }

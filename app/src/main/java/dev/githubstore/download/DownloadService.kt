@@ -38,30 +38,47 @@ class DownloadService : Service() {
                 while (true) {
                     val task = store.tasks.tasks.value.firstOrNull { it.status == TaskStatus.QUEUED } ?: break
                     activeId = task.id
-                    withContext(Dispatchers.IO) {
+                    val cancellationMonitor = scope.launch {
+                        store.tasks.tasks.collect { tasks ->
+                            if (tasks.any { it.id == task.id && it.status == TaskStatus.CANCELLED }) engine.cancel()
+                        }
+                    }
+                    try { withContext(Dispatchers.IO) {
                         try {
                             val app = store.catalog.find(task.appId) ?: error("应用已不在目录中")
-                            store.tasks.update(task.id) { it.copy(status = TaskStatus.DOWNLOADING, error = null, downloaded = 0) }
+                            store.tasks.update(task.id) { if (it.status == TaskStatus.QUEUED) it.copy(status = TaskStatus.DOWNLOADING, error = null) else it }
+                            if (store.tasks.find(task.id)?.status != TaskStatus.DOWNLOADING) return@withContext
                             engine.download(app.repository, task.asset, store.tasks.partial(task.id), store.tasks.file(task.id),
                                 onProgress = { count ->
                                     if (store.tasks.find(task.id)?.status == TaskStatus.CANCELLED) { engine.cancel(); throw CancellationException("已取消") }
                                     store.tasks.update(task.id) { it.copy(downloaded = count) }
                                     getSystemService(NotificationManager::class.java).notify(10, notification(task.appName, (count * 100 / task.asset.size).toInt()))
-                                }, onVerifying = { store.tasks.update(task.id) { it.copy(status = TaskStatus.VERIFYING) } })
+                                }, onVerifying = {
+                                    if (store.tasks.find(task.id)?.status == TaskStatus.CANCELLED) throw CancellationException("已取消")
+                                    store.tasks.update(task.id) { if (it.status == TaskStatus.DOWNLOADING) it.copy(status = TaskStatus.VERIFYING) else it }
+                                })
                             if (store.tasks.find(task.id)?.status == TaskStatus.CANCELLED) store.tasks.file(task.id).delete()
                             else store.tasks.update(task.id) { it.copy(status = TaskStatus.READY) }
                         } catch (cancelled: CancellationException) {
                             if (store.tasks.find(task.id)?.status != TaskStatus.CANCELLED)
-                                store.tasks.update(task.id) { it.copy(status = TaskStatus.INTERRUPTED, error = "下载被系统中断，可重试") }
+                                store.tasks.update(task.id) { it.copy(status = TaskStatus.INTERRUPTED,
+                                    downloaded = DownloadEngine.persistedBytes(store.tasks.partial(task.id)).coerceAtMost(task.asset.size),
+                                    error = "下载被系统中断，已保留进度，可继续下载") }
                             if (!currentCoroutineContext().isActive) throw cancelled
                         } catch (error: Exception) {
                             if (store.tasks.find(task.id)?.status != TaskStatus.CANCELLED)
-                                store.tasks.update(task.id) { it.copy(status = TaskStatus.FAILED, error = when (error) {
+                                store.tasks.update(task.id) { it.copy(status = TaskStatus.FAILED,
+                                    downloaded = DownloadEngine.persistedBytes(store.tasks.partial(task.id)).coerceAtMost(task.asset.size), error = when (error) {
                                     is java.net.UnknownHostException -> "无法连接 GitHub，请检查设备网络后重试"
                                     is java.net.SocketTimeoutException -> "下载连接超时，请检查网络后重试"
                                     is javax.net.ssl.SSLException -> "无法建立安全连接，请检查设备时间与网络"
                                     else -> error.message ?: "下载失败，请检查网络"
                                 }) }
+                        }
+                    } } finally {
+                        cancellationMonitor.cancel()
+                        if (store.tasks.find(task.id)?.status == TaskStatus.CANCELLED) {
+                            withContext(NonCancellable + Dispatchers.IO) { DownloadEngine.discard(store.tasks.partial(task.id)) }
                         }
                     }
                 }

@@ -61,7 +61,7 @@
       "license": "自定义许可证",
       "color": "247FBC",
       "symbol": "B",
-      "iconUrl": "",
+      "iconUrl": "https://raw.githubusercontent.com/truefedex/tv-bro/master/metadata/en-US/images/icon.png",
       "screenshots": [],
       "licenseSource": "https://github.com/truefedex/tv-bro/blob/master/LICENSE.md",
       "tvStatus": "作者面向 TV 设计 · Orbit 尚未真机验证",
@@ -106,7 +106,7 @@
       "license": "Apache-2.0",
       "color": "168A7F",
       "symbol": "L",
-      "iconUrl": "",
+      "iconUrl": "https://raw.githubusercontent.com/localsend/localsend/main/app/assets/img/logo-512.png",
       "screenshots": [
         "https://localsend.org/img/screenshot-iphone.webp",
         "https://localsend.org/img/screenshot-pc.webp"
@@ -156,7 +156,7 @@
       "license": "GPL-3.0",
       "color": "BE8735",
       "symbol": "M",
-      "iconUrl": "",
+      "iconUrl": "https://raw.githubusercontent.com/zhanghai/MaterialFiles/master/fastlane/metadata/android/en-US/images/icon.png",
       "screenshots": [
         "https://raw.githubusercontent.com/zhanghai/MaterialFiles/master/fastlane/metadata/android/en-US/images/phoneScreenshots/1.png",
         "https://raw.githubusercontent.com/zhanghai/MaterialFiles/master/fastlane/metadata/android/en-US/images/phoneScreenshots/2.png",
@@ -172,5 +172,5 @@
       "mediaSource": "https://github.com/zhanghai/MaterialFiles/blob/master/README_zh-CN.md"
     }
   ],
-  "generatedAt": 1794262847515
+  "generatedAt": 1794320052197
 }

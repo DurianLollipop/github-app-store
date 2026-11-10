@@ -11,8 +11,8 @@ android {
         applicationId = "dev.githubstore"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.2.0-dev"
+        versionCode = 5
+        versionName = "0.2.2-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         fun quotedProperty(name: String) = "\"" + providers.gradleProperty(name).orElse("").get().replace("\\", "\\\\").replace("\"", "\\\"") + "\""
         buildConfigField("String", "CATALOG_URL", quotedProperty("orbitCatalogUrl"))

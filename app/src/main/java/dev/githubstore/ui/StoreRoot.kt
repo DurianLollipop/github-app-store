@@ -20,6 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -50,8 +52,11 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
 @Composable fun StoreRoot(model: StoreViewModel, onInstall: (DownloadTask) -> Unit,
                          onDownloadPermission: () -> Unit, openDownloads: Boolean,
                          onExternal: (String) -> Unit, onUninstall: (String) -> Unit) {
-    val catalogApps by model.apps.collectAsStateWithLifecycle()
-    val apps = catalogApps.filter { it.id != "orbit-store" }
+    val recommendedApps by model.apps.collectAsStateWithLifecycle()
+    val discoveredApps by model.discovered.collectAsStateWithLifecycle()
+    val searchState by model.search.collectAsStateWithLifecycle()
+    val catalogApps = recommendedApps + discoveredApps.filterNot { found -> recommendedApps.any { it.id == found.id } }
+    val apps = recommendedApps.filter { it.id != "orbit-store" }
     val tasks by model.tasks.collectAsStateWithLifecycle()
     val installed by model.installed.collectAsStateWithLifecycle()
     val busy by model.busy.collectAsStateWithLifecycle()
@@ -61,10 +66,11 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
     var selectedApp by rememberSaveable { mutableStateOf<String?>(null) }
     var lastAppId by rememberSaveable { mutableStateOf<String?>(null) }
     val cardFocus = remember { mutableMapOf<String, FocusRequester>() }
-    fun select(app: StoreApp) { lastAppId = app.id; selectedApp = app.id }
+    fun select(app: StoreApp) { model.prepareDetail(app); lastAppId = app.id; selectedApp = app.id }
     val homeScroll = rememberLazyGridState()
     val homeFocus = remember { HomeFocusMemory() }
     val navigationFocus = remember { Destination.entries.associateWith { FocusRequester() } }
+    val browseEntry = remember { mapOf(Destination.Search to FocusRequester(), Destination.Categories to FocusRequester()) }
     val scope = rememberCoroutineScope()
     val pageState = rememberSaveableStateHolder()
     var lastMessage by remember { mutableStateOf("") }
@@ -86,11 +92,23 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
         SilkSceneHost(Modifier.fillMaxSize(), animate = destination == Destination.Discover && selectedApp == null) {
             Column(Modifier.fillMaxSize()) {
                 FloatingNavigation(destination, tasks.count { it.active }, navigationFocus,
-                    onHomeDown = {
-                        if (selectedApp != null) false else {
-                            if (!focusVisibleHomeApp(apps, homeScroll, homeFocus))
-                                scope.launch { focusHomeApp(apps, homeScroll, homeFocus) }
-                            true
+                    onContentDown = {
+                        if (selectedApp != null) false else when (destination) {
+                            Destination.Discover -> {
+                                if (!focusVisibleHomeApp(apps, homeScroll, homeFocus))
+                                    scope.launch { focusHomeApp(apps, homeScroll, homeFocus) }
+                                true
+                            }
+                            Destination.Search, Destination.Categories -> {
+                                val target = destination
+                                val requester = browseEntry.getValue(target)
+                                if (!runCatching { requester.requestFocus() }.getOrDefault(false)) scope.launch {
+                                    withFrameNanos { }
+                                    if (destination == target && selectedApp == null) runCatching { requester.requestFocus() }
+                                }
+                                true
+                            }
+                            else -> false
                         }
                     },
                     onSelect = { destination = it; selectedApp = null })
@@ -100,7 +118,7 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
                             val shownDestination = Destination.valueOf(route.substringBefore(':'))
                             val app = catalogApps.firstOrNull { it.id == route.substringAfter(':') }
                             if (app != null) AppDetail(app, installed[app.packageName], busy.contains(app.id),
-                                onBack = { selectedApp = null }, onRefresh = { model.refresh(app.id, true) },
+                                onBack = { selectedApp = null }, onRefresh = { model.prepareDetail(app, true) },
                                 onDownload = { release, asset -> onDownloadPermission(); model.download(app, release, asset); selectedApp = null; destination = Destination.Downloads },
                                 onOpen = { model.open(app) }, onExternal = onExternal,
                                 onUninstall = { onUninstall(app.packageName) })
@@ -108,8 +126,8 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
                                 Destination.Discover -> HomePage(apps, homeScroll, homeFocus,
                                     navigationFocus.getValue(Destination.Discover), restoreFocus = lastAppId != null,
                                     onSelect = { homeFocus.lastId = it.id; select(it) })
-                                Destination.Search -> BrowsePage(apps, true, cardFocus, ::select)
-                                Destination.Categories -> BrowsePage(apps, false, cardFocus, ::select)
+                                Destination.Search -> GitHubSearchPage(searchState.copy(results = searchState.results.map { found -> catalogApps.firstOrNull { it.id == found.id } ?: found }), navigationFocus.getValue(Destination.Search), browseEntry.getValue(Destination.Search), cardFocus, model::searchQuery, model::submitSearch, model::moreSearchResults, ::select)
+                                Destination.Categories -> BrowsePage(apps, false, cardFocus, navigationFocus.getValue(Destination.Categories), browseEntry.getValue(Destination.Categories), ::select)
                                 Destination.Downloads -> DownloadsPage(tasks, catalogApps, onInstall, model::cancel, model::retry, { selectedApp = it })
                                 Destination.Library -> LibraryPage(apps, installed, ignored, busy.isNotEmpty(), model::refreshAll,
                                     onSelect = { selectedApp = it.id }, onOpen = model::open, onIgnore = model::ignore)
@@ -132,7 +150,7 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
     }
 }
 
-@Composable private fun AppCard(app: StoreApp, modifier: Modifier = Modifier, onClick: () -> Unit) {
+@Composable internal fun AppCard(app: StoreApp, modifier: Modifier = Modifier, onClick: () -> Unit, showRepository: Boolean = false) {
     FocusSurface(onClick, modifier.width(198.dp), radius = 19) { focused ->
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -144,32 +162,72 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp))
             Text(app.tagline, color = Muted, fontSize = 10.sp, lineHeight = 14.sp, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 5.dp))
-            Text(app.category, color = Accent, fontSize = 9.sp, lineHeight = 13.sp, modifier = Modifier.padding(top = 7.dp))
+            Text(if (showRepository) app.repository else app.category, color = Accent, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 9.sp, lineHeight = 13.sp, modifier = Modifier.padding(top = 7.dp))
         }
     }
 }
 
-@Composable private fun BrowsePage(apps: List<StoreApp>, search: Boolean, focus: MutableMap<String, FocusRequester>, onSelect: (StoreApp) -> Unit) {
+@Composable private fun BrowsePage(apps: List<StoreApp>, search: Boolean, focus: MutableMap<String, FocusRequester>, navigationFocus: FocusRequester, entryFocus: FocusRequester, onSelect: (StoreApp) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf("全部") }
     val categories = listOf("全部") + apps.map { it.category }.distinct()
     val filtered = apps.filter { (category == "全部" || it.category == category) &&
         listOf(it.name, it.tagline, it.description, it.repository).any { field -> field.contains(query, true) } }
+    val scope = rememberCoroutineScope()
+    val grid = rememberLazyGridState()
+    val categoryFocus = remember { mutableMapOf("全部" to entryFocus) }
+    val inputFocus = remember { FocusRequester() }
+    var lastCategory by rememberSaveable { mutableStateOf("全部") }
+    fun categoryRequester() = categoryFocus.getOrPut(lastCategory) { FocusRequester() }
+    fun enterResults(): Boolean {
+        val first = filtered.firstOrNull() ?: return true
+        if (grid.layoutInfo.visibleItemsInfo.any { it.key == first.id }) {
+            focus[first.id]?.requestFocus()
+        } else scope.launch {
+            grid.scrollToItem(0)
+            withFrameNanos { }
+            focus[first.id]?.requestFocus()
+        }
+        return true
+    }
     Column(Modifier.fillMaxSize().padding(34.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         SectionTitle(if (search) "找到你的下一款好应用" else "每一种热爱，都有选择", "浏览目录中的 ${apps.size} 款开源应用")
-        if (search) OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), singleLine = true,
-            enabled = LocalPageActive.current,
+        if (search) OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().focusRequester(inputFocus)
+            .onPreviewKeyEvent {
+                if (it.type != KeyEventType.KeyDown) false else when (it.key) {
+                    Key.DirectionDown -> { categoryRequester().requestFocus(); true }
+                    Key.DirectionUp -> { navigationFocus.requestFocus(); true }
+                    else -> false
+                }
+            }, singleLine = true, enabled = LocalPageActive.current,
             leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text("搜索应用名称、用途或仓库", fontSize = 14.sp) },
             shape = RoundedCornerShape(16.dp), textStyle = LocalTextStyle.current.copy(fontSize = 15.sp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-            items(categories) { item -> FocusSurface({ category = item }, selected = category == item, radius = 50) {
+        LazyRow(Modifier.testTag("browse-categories").onPreviewKeyEvent {
+            if (it.type != KeyEventType.KeyDown) false else when (it.key) {
+                Key.DirectionDown -> enterResults()
+                Key.DirectionUp -> { if (search) inputFocus.requestFocus() else navigationFocus.requestFocus(); true }
+                else -> false
+            }
+        }, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+            items(categories, key = { it }) { item -> FocusSurface({ category = item },
+                Modifier.testTag("browse-category-$item").focusRequester(categoryFocus.getOrPut(item) { FocusRequester() })
+                    .onFocusChanged { if (it.isFocused) lastCategory = item }, selected = category == item, radius = 50) {
                 Text(item, Modifier.padding(horizontal = 18.dp, vertical = 10.dp), fontSize = 12.sp)
             } }
         }
         if (filtered.isEmpty()) EmptyState(Icons.Outlined.SearchOff, "没有找到应用", "试试其他关键词或分类", compact = true)
-        else LazyVerticalGrid(GridCells.Adaptive(190.dp), horizontalArrangement = Arrangement.spacedBy(17.dp), verticalArrangement = Arrangement.spacedBy(17.dp), contentPadding = PaddingValues(7.dp)) {
-            items(filtered, key = { it.id }) { app -> AppCard(app, Modifier.fillMaxWidth().animateItem().focusRequester(focus.getOrPut(app.id) { FocusRequester() }), { onSelect(app) }) }
+        else LazyVerticalGrid(GridCells.Adaptive(190.dp), Modifier.weight(1f).testTag("browse-grid"), state = grid,
+            horizontalArrangement = Arrangement.spacedBy(17.dp), verticalArrangement = Arrangement.spacedBy(17.dp), contentPadding = PaddingValues(7.dp)) {
+            items(filtered, key = { it.id }) { app -> AppCard(app, Modifier.fillMaxWidth().animateItem()
+                .testTag("browse-app-${app.id}").focusRequester(focus.getOrPut(app.id) { FocusRequester() })
+                .onPreviewKeyEvent {
+                    val cell = grid.layoutInfo.visibleItemsInfo.firstOrNull { cell -> cell.key == app.id }
+                    if (it.type == KeyEventType.KeyDown && it.key == Key.DirectionUp && cell?.row == 0) {
+                        categoryRequester().requestFocus(); true
+                    } else false
+                }, { onSelect(app) }) }
         }
+
     }
 }
 
@@ -182,8 +240,14 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
     var restoreImageFocus by remember { mutableStateOf(false) }
     val imageFocus = remember { mutableMapOf<String, FocusRequester>() }
     val closeFocus = remember { FocusRequester() }
-    val release = app.releases.firstOrNull { it.tag == selectedTag } ?: app.releases.firstOrNull { !it.prerelease } ?: app.releases.firstOrNull()
-    val asset = release?.let { AssetPolicy.recommended(it, Build.SUPPORTED_ABIS.toList(), Build.VERSION.SDK_INT) }
+    var versionsOpen by remember { mutableStateOf(false) }
+    var assetsOpen by remember { mutableStateOf(false) }
+    val release = selectedRelease(app.releases, selectedTag)
+    var selectedAssetId by rememberSaveable(app.id, release?.tag) { mutableStateOf<Long?>(null) }
+    val candidates = release?.let { AssetPolicy.candidates(it, Build.SUPPORTED_ABIS.toList(), Build.VERSION.SDK_INT) }.orEmpty()
+    val asset = candidates.firstOrNull { it.id == selectedAssetId } ?: release?.let { AssetPolicy.recommended(it, Build.SUPPORTED_ABIS.toList(), Build.VERSION.SDK_INT) }
+    val versionFocus = remember { FocusRequester() }
+    val menuLatestFocus = remember { FocusRequester() }
     val detailScroll = rememberLazyListState()
     val firstFocus = remember(app.id) { FocusRequester() }
     val pageActive = LocalPageActive.current
@@ -218,14 +282,53 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
                     Text(app.name, color = Ink, fontSize = 32.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-.7).sp, modifier = Modifier.padding(top = 5.dp))
                     Text(app.tagline, color = Muted, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
                     Row(Modifier.padding(top = 19.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (release != null && asset != null && app.certificateSha256.isEmpty()) TvButton("查看官方发布", { onExternal(release.url) }, Modifier.focusRequester(firstFocus), primary = true)
-                        else if (release != null && asset != null) TvButton("下载 · ${formatBytes(asset.size)}", { onDownload(release, asset) },
-                            Modifier.focusRequester(firstFocus), primary = true,
-                            icon = { Icon(Icons.Outlined.Download, null, Modifier.size(16.dp)) })
-                        else TvButton(if (busy) "正在检查…" else "获取发布版本", onRefresh, Modifier.focusRequester(firstFocus), primary = true)
+                        val primaryLabel = when {
+                            busy -> "正在检查…"
+                            release != null && asset != null && app.certificateSha256.isNotEmpty() -> "下载 · ${formatBytes(asset.size)}"
+                            release != null && candidates.isNotEmpty() && asset == null -> "选择安装包"
+                            release != null -> "查看官方发布"
+                            else -> "获取发布版本"
+                        }
+                        TvButton(primaryLabel, {
+                            if (!busy) when {
+                                release != null && asset != null && app.certificateSha256.isNotEmpty() -> onDownload(release, asset)
+                                release != null && candidates.isNotEmpty() && asset == null -> assetsOpen = true
+                                release != null -> onExternal(release.url)
+                                else -> onRefresh()
+                            }
+                        }, Modifier.focusRequester(firstFocus).testTag("detail-primary-download"), primary = true)
                         if (installed != null) TvButton("打开", onOpen)
                         TvButton("官方仓库", { onExternal(app.sourceUrl) })
                     }
+                    if (release != null) Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box {
+                            TvButton("${if (selectedTag == null) "最新" else "版本"}：${release.tag.take(22)} ▾", { versionsOpen = true },
+                                Modifier.focusRequester(versionFocus).testTag("version-picker"))
+                            DropdownMenu(versionsOpen, { versionsOpen = false }, Modifier.heightIn(max = 240.dp).testTag("version-menu")) {
+                                DropdownMenuItem(text = { Text("最新稳定版") }, onClick = { selectedTag = null; versionsOpen = false },
+                                    modifier = Modifier.testTag("version-latest").focusRequester(menuLatestFocus))
+                                LaunchedEffect(versionsOpen) {
+                                    if (versionsOpen) { withFrameNanos { }; menuLatestFocus.requestFocus() }
+                                }
+                                app.releases.forEach { version ->
+                                    DropdownMenuItem(text = { Text(version.tag + if (version.prerelease) " · 测试版" else " · 稳定版", fontSize = 13.sp) },
+                                        onClick = { selectedTag = version.tag; versionsOpen = false },
+                                        modifier = Modifier.testTag("version-option-${version.tag}"))
+                                }
+                            }
+                        }
+                        if (candidates.size > 1 || (candidates.isNotEmpty() && asset == null)) Box {
+                            TvButton("安装包：${asset?.abi ?: "请选择"} ▾", { assetsOpen = true }, Modifier.testTag("asset-picker"))
+                            DropdownMenu(assetsOpen, { assetsOpen = false }, Modifier.heightIn(max = 240.dp)) {
+                                candidates.forEach { candidate ->
+                                    DropdownMenuItem(text = { Text("${candidate.name} · ${formatBytes(candidate.size)}", fontSize = 12.sp) },
+                                        onClick = { selectedAssetId = candidate.id; assetsOpen = false },
+                                        modifier = Modifier.testTag("asset-option-${candidate.id}"))
+                                }
+                            }
+                        }
+                    }
+
                 }
             }
         }
@@ -262,35 +365,13 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
                 } }
             }
         }
-        item { SectionTitle("版本记录", "最多查看最近 20 个发布；历史版本受系统兼容与降级限制") }
-        if (app.releases.isEmpty()) item { TvButton("从 GitHub 获取版本", onRefresh, primary = true) }
-        items(app.releases, key = { it.id }) { version ->
-            FocusSurface({ selectedTag = version.tag }, Modifier.fillMaxWidth(), selected = version.tag == release?.tag, radius = 16) { focused ->
-                Row(Modifier.padding(17.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(version.tag + if (version.prerelease) "  · 测试版" else "  · 稳定版", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                        Text("${version.publishedAt.take(10)}  · ${version.assets.size} 个 APK", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 5.dp))
-                    }
-                    Icon(if (version.tag == release?.tag) Icons.Outlined.CheckCircle else Icons.Outlined.ChevronRight, null, Modifier.size(19.dp))
-                }
-            }
+        if (app.releases.isEmpty()) item {
+            Text(if (busy) "正在从 GitHub 获取发布版本…" else "暂无发布版本，可前往官方仓库查看。", color = Muted, fontSize = 13.sp)
         }
         if (release != null) {
-            item { Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
-                SectionTitle("${release.tag} 的安装包", "架构会自动筛选；文件校验及签名检查通过后才可安装")
-                if (AssetPolicy.candidates(release, Build.SUPPORTED_ABIS.toList(), Build.VERSION.SDK_INT).isEmpty()) Text("这个版本没有适合当前设备的独立 APK。", color = Muted, fontSize = 13.sp)
-                AssetPolicy.candidates(release, Build.SUPPORTED_ABIS.toList(), Build.VERSION.SDK_INT).forEach { candidate ->
-                    FocusSurface({ if (app.certificateSha256.isEmpty()) onExternal(release.url) else onDownload(release, candidate) }, Modifier.fillMaxWidth(), radius = 13) { focused ->
-                        Row(Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(candidate.name, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text("${candidate.abi} · ${formatBytes(candidate.size)} · ${if (candidate.versionCode != null) "包信息已核对" else "安装前核对兼容性"}",
-                                    color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 5.dp))
-                            }
-                            Icon(Icons.Outlined.Download, null, Modifier.size(19.dp))
-                        }
-                    }
-                }
+            item { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionTitle("当前版本", "${release.tag} · ${release.publishedAt.take(10)}")
+                if (candidates.isEmpty()) Text("此版本没有适配当前电视的独立 APK，可在官方发布页查看其他平台文件。", color = Muted, fontSize = 12.sp)
                 TvButton("查看此版本官方发布页", { onExternal(release.url) })
             } }
             item { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -332,7 +413,7 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
                     }
                     Text(task.status.label, color = if (task.status == TaskStatus.INSTALLED) Good else Accent, fontSize = 11.sp)
                 }
-                if (task.active) {
+                if (task.active || (task.downloaded > 0 && task.status in setOf(TaskStatus.FAILED, TaskStatus.INTERRUPTED))) {
                     LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(4.dp), color = Accent, trackColor = Control)
                     Text("${formatBytes(task.downloaded)} / ${formatBytes(task.asset.size)}", color = Muted, fontSize = 10.sp)
                 }
@@ -341,7 +422,7 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
                     when (task.status) {
                         TaskStatus.READY, TaskStatus.WAITING_USER -> TvButton(if (task.status == TaskStatus.READY) "安装应用" else "继续安装", { onInstall(task) }, primary = true)
                         TaskStatus.QUEUED, TaskStatus.DOWNLOADING, TaskStatus.VERIFYING -> TvButton("取消下载", { onCancel(task) })
-                        TaskStatus.FAILED, TaskStatus.INTERRUPTED, TaskStatus.CANCELLED -> TvButton("重试", { onRetry(task) }, primary = true)
+                        TaskStatus.FAILED, TaskStatus.INTERRUPTED, TaskStatus.CANCELLED -> TvButton(if (task.downloaded > 0 && task.status != TaskStatus.CANCELLED) "继续下载" else "重试", { onRetry(task) }, primary = true)
                         else -> Unit
                     }
                     TvButton("查看应用", { onSelect(task.appId) })

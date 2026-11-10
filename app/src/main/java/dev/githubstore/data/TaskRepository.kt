@@ -2,6 +2,7 @@ package dev.githubstore.data
 
 import android.content.Context
 import dev.githubstore.domain.*
+import dev.githubstore.download.DownloadEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
@@ -12,7 +13,9 @@ class TaskRepository(context: Context) {
     private val disk = AtomicJson(File(context.filesDir, "tasks.json"))
     private val _tasks = MutableStateFlow(disk.read()?.let { raw -> runCatching {
         JSONArray(raw).objects().map(JsonCodec::readTask).map { task ->
-            if (task.active) task.copy(status = TaskStatus.INTERRUPTED, error = "上次下载中断，可重新下载") else task
+            if (task.active) task.copy(status = TaskStatus.INTERRUPTED,
+                downloaded = DownloadEngine.persistedBytes(File(context.filesDir, "downloads/${task.id}.part")).coerceAtMost(task.asset.size),
+                error = "上次下载中断，已保留进度，可继续下载") else task
         }
     }.getOrNull() }.orEmpty())
     val tasks = _tasks.asStateFlow()
@@ -34,8 +37,9 @@ class TaskRepository(context: Context) {
     fun partial(id: String) = File(downloadDir, "$id.part")
     fun clearCompletedFiles(): Long {
         val protected = _tasks.value.filter { it.active || it.status in setOf(TaskStatus.READY, TaskStatus.WAITING_USER, TaskStatus.INSTALLING) }.map { it.id }.toSet()
-        return downloadDir.listFiles().orEmpty().filterNot { it.name.substringBeforeLast('.') in protected }.sumOf { file ->
-            val size = file.length(); if (file.delete()) size else 0
+        return downloadDir.listFiles().orEmpty().filterNot { it.name.substringBefore('.') in protected }.sumOf { file ->
+            val size = if (file.isDirectory) file.walkTopDown().filter { it.isFile }.sumOf { it.length() } else file.length()
+            if (file.deleteRecursively()) size else 0
         }
     }
 }

@@ -47,6 +47,19 @@ class CatalogRepository(context: Context, private val client: OkHttpClient) {
 
     fun find(id: String) = _apps.value.firstOrNull { it.id == id }
 
+    suspend fun acceptDetails(details: StoreApp): StoreApp = mutex.withLock {
+        val current = find(details.id) ?: return@withLock details
+        val updated = current.copy(description = details.description, iconUrl = details.iconUrl,
+            screenshots = details.screenshots, readmeUrl = details.readmeUrl, mediaSource = details.mediaSource,
+            releases = mergeReviewed(current, details.releases), checkedAt = details.checkedAt)
+        withContext(Dispatchers.IO) {
+            AtomicJson(File(cacheDir, "${current.id}.json")).write(JSONObject().put("checkedAt", updated.checkedAt)
+                .put("releases", JSONArray(updated.releases.map(JsonCodec::release))).toString())
+        }
+        _apps.value = _apps.value.map { if (it.id == current.id) updated else it }
+        updated
+    }
+
     suspend fun refreshSnapshot(): Boolean = mutex.withLock { withContext(Dispatchers.IO) {
         if (BuildConfig.CATALOG_URL.isBlank() || BuildConfig.CATALOG_PUBLIC_KEY.isBlank()) return@withContext false
         val request = Request.Builder().url(BuildConfig.CATALOG_URL).build()

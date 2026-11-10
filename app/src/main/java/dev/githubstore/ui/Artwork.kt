@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,7 +28,8 @@ internal fun isCenteredBannerArtwork(url: String): Boolean =
 @Composable fun AppMark(app: StoreApp, modifier: Modifier = Modifier, size: Int = 58,
                        fallbackShading: Boolean = true, shape: Shape? = RoundedCornerShape((size * .24f).dp),
                        symbolShadow: Shadow? = null) {
-    var loaded by remember(app.iconUrl) { mutableStateOf(false) }
+    val source = app.iconUrl
+    var loaded by remember(source) { mutableStateOf(false) }
     val bannerArtwork = isCenteredBannerArtwork(app.iconUrl)
     val tileGradient = remember(app.color) {
         val hsv = FloatArray(3)
@@ -41,14 +45,14 @@ internal fun isCenteredBannerArtwork(url: String): Boolean =
     // the explicit letter fallback, never behind a successfully loaded logo.
     // A parent material can own the silhouette, avoiding two independently
     // antialiased masks around the artwork and its lighting overlay.
-    Box(modifier.size(size.dp).then(if (shape != null) Modifier.clip(shape) else Modifier)
+    Box(modifier.size(size.dp).testTag("app-icon-${app.id}").semantics { stateDescription = if (loaded) "在线图标" else "占位图标" }.then(if (shape != null) Modifier.clip(shape) else Modifier)
         .background(if (loaded) Color.White else Color(app.color.toInt())), contentAlignment = Alignment.Center) {
         if (!loaded && !fallbackShading) Box(Modifier.matchParentSize().background(tileGradient))
         if (!loaded && fallbackShading) Box(Modifier.matchParentSize().background(Brush.linearGradient(
             listOf(Color.White.copy(.18f), Color.Transparent, Color.Black.copy(.10f)))))
         if (!loaded) Text(app.symbol, color = Color.White, fontSize = (size * .46f).sp, fontWeight = FontWeight.Bold,
             style = TextStyle(shadow = symbolShadow))
-        if (app.iconUrl.isNotEmpty()) AsyncImage(app.iconUrl, "${app.name} 图标",
+        if (source.isNotEmpty()) AsyncImage(source, "${app.name} 图标",
             Modifier.fillMaxSize().padding(if (bannerArtwork) 0.dp else (size * .12f).dp).alpha(if (loaded) 1f else 0f),
             // This README asset is a centered symbol in a 5:1 transparent banner.
             // Crop its empty sides; fit other logos without distorting/cutting them.

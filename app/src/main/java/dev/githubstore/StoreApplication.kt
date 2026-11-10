@@ -5,6 +5,8 @@ import androidx.work.*
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.decode.SvgDecoder
+import coil.disk.DiskCache
+import java.io.File
 import dev.githubstore.data.*
 import dev.githubstore.install.PackageInspector
 import okhttp3.OkHttpClient
@@ -16,8 +18,10 @@ class StoreApplication : Application(), ImageLoaderFactory {
     lateinit var inspector: PackageInspector; private set
     val client: OkHttpClient by lazy { OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(45, TimeUnit.SECONDS).followSslRedirects(true).build() }
+    var github: GitHubDiscovery = GitHubDiscovery(client)
     override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
-        .okHttpClient(client).components { add(SvgDecoder.Factory()) }.build()
+        .okHttpClient(client).diskCache { DiskCache.Builder().directory(File(cacheDir, "image_cache"))
+            .maxSizeBytes(64L * 1024 * 1024).build() }.components { add(SvgDecoder.Factory()) }.build()
     override fun onCreate() {
         super.onCreate()
         catalog = CatalogRepository(this, client)
