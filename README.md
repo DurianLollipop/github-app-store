@@ -1,10 +1,10 @@
 # Orbit 开源商店
 
-一款面向 Android TV 的 GitHub 开源应用商店。采用接近 tvOS 的简洁深色视觉：清晰的文字层级、宽松留白、圆角卡片、克制的焦点动效。
+一款面向 Android TV 的 GitHub 开源应用商店。以 Apple tvOS 风格参考图改造首页：悬浮玻璃胶囊导航、蓝紫粉丝绸流光、六列横向圆角应用卡片，配合轻微弹性的聚焦抬升和自然进退。
 
 浏览开源应用，了解真实版本信息，从作者的官方发布下载 APK，并通过系统安装器完成安装与更新。首发 Android TV，后续计划扩展至 Android 手机和平板、Web，以及 Windows / macOS / Linux。
 
-目前是 **v0.1 开发预览版**，可以编译成真实 Android APK。公开测试前仍需完成真机矩阵、更多应用审核及正式签名发布。
+目前是 **v0.2.0-dev 开发预览版**，可以编译成真实 Android APK。公开测试前仍需完成真机矩阵、更多应用审核及正式签名发布。
 
 ## 界面预览
 
@@ -13,12 +13,16 @@
 | 首页发现 | 应用详情 |
 | :---: | :---: |
 | [![首页：应用推荐与遥控器导航](docs/screenshots/home.png)](docs/screenshots/home.png) | [![详情：介绍、版本、大小与下载入口](docs/screenshots/details.png)](docs/screenshots/details.png) |
-| **下载中心** | **系统安装确认** |
-| [![下载中心：TV Bro 实际安装完成记录](docs/screenshots/downloads.png)](docs/screenshots/downloads.png) | [![系统安装器：用户确认 TV Bro 更新](docs/screenshots/system-install.png)](docs/screenshots/system-install.png) |
+| **下载中心** | **我的应用** |
+| [![下载中心：浅色界面与任务空状态](docs/screenshots/downloads.png)](docs/screenshots/downloads.png) | [![我的应用：已安装版本与更新管理](docs/screenshots/library.png)](docs/screenshots/library.png) |
+
+[查看实际动效录屏](docs/screenshots/navigation.mp4)（模拟器，约 18 秒）。[720p 布局截图](docs/screenshots/home-720p.png)与[图标聚焦截图](docs/screenshots/home-focused.png)可单独查看。视觉、过渡时长、焦点与减少动态效果的规则见[界面设计记录](docs/ui-design.md)。前期安装链路的真实记录保存在[安装完成截图](docs/screenshots/downloads-installed.png)和[系统确认截图](docs/screenshots/system-install.png)。
 
 ## 当前功能
 
-- 首页发现、分类、中文搜索、详情介绍、真实截图预览。
+- 毛玻璃顶部导航、统一左上方向受光的六列横向卡片首页、分类、中文搜索、详情介绍、真实截图预览。
+- 详情介绍支持遥控器上下键逐段浏览；长段落自动分段，兼容大字号，也可触摸滑动。
+- 图标 1.08 倍聚焦与柔光、按下反馈、导航胶囊滑动、页面进退及截图弹层过渡；支持系统关闭动画和低内存设备静态背景。
 - 从 GitHub 获取最近发布与历史版本，显示安装包大小、架构、版本说明和来源。
 - 按设备架构与系统版本筛选 APK；存在多个同级变体时保留手动选择。
 - 前台下载队列、进度、取消、失败重试、任务持久化与中断后重新下载。
@@ -28,9 +32,12 @@
 - 商店自身更新入口，沿用相同的下载、校验和安装链路。
 - 本地目录与发布记录缓存、限流退避、每 6 小时的后台检查。
 - 可选的签名远程目录，验证发布者签名、递增版本及同版本内容一致性。
+- 从项目 README 提取介绍、Logo 和截图，支持官方中文文档、SVG 图标与来源跳转。
 - 内容候选同步、APK 检查、显式审核和目录生成脚本，以及 GitHub Actions 构建检查。
 
 内置 5 个开发样本；Jellyfin 和 TV Bro 已录入实际官方 APK 的包信息与签名，其余样本先用于浏览和内容开发。未经发布来源审核的应用会引导至官方发布页，不提供商店内安装。所有应用的真实电视遥控器兼容性仍需实机确认。
+
+详情页阅读：按向下键进入介绍，继续使用上下键逐段浏览；按遥控器返回键回到列表。重新打开详情时从顶部主操作开始。
 
 ## 技术栈
 
@@ -71,16 +78,18 @@ adb shell am start -n dev.githubstore/.MainActivity
 
 | 验证项 | 结果 |
 | --- | --- |
-| 单元测试 | 22 项通过，覆盖选包、版本比较、下载校验和目录签名 |
-| 原生 UI 测试 | 4 项通过，覆盖遥控器导航、详情返回、搜索及空状态 |
-| 真实下载安装 | TV Bro 官方 APK 下载、签名核对、系统确认与安装结果验证通过 |
+| Android 单元测试 | 27 项通过，覆盖选包、版本比较、下载校验、目录签名、README 字段兼容与阅读分段 |
+| README 提取测试 | 16 项通过，覆盖图片识别、相对路径、徽章过滤、失败保留与审核字段隔离 |
+| 原生 UI 测试 | 1080p 正常动画下 13 项通过，新增真实图标导航、42 项测试目录快速跨行和屏幕下方焦点恢复 |
+| 720p / 关闭系统动画 | 同样的 13 项原生 UI 测试通过，包含原有长介绍、大字号、触摸和截图预览回归 |
+| 真实下载安装 | 前期 TV Bro 官方 APK 下载、签名核对、系统确认与安装结果验证通过；本轮首页改造未重复执行 |
 | 构建与静态检查 | 开发 APK、原生测试包构建成功，Android Lint 无 Error / Fatal |
 
 ```bash
 ./scripts/check.sh
 ```
 
-执行目录验证、单元测试、Android Lint、开发 APK 与原生 UI 测试包构建。
+执行目录验证、README 提取测试、Android 单元测试、Android Lint、开发 APK 与原生 UI 测试包构建。
 
 如果 SDK 中已安装 `emulator` 和 `system-images;android-33;android-tv;arm64-v8a`，可以启动本地无窗口 TV 模拟器：
 
@@ -88,9 +97,13 @@ adb shell am start -n dev.githubstore/.MainActivity
 ./scripts/run-tv-emulator.sh
 # 另一个终端，等待系统启动完成后运行：
 ./scripts/test-tv.sh
+# 额外验证关闭动画时的完整交互；结束后自动恢复原设置
+./scripts/test-tv.sh --reduced-motion
 ```
 
-`test-tv.sh` 只连接 `emulator-5554`，清理该模拟器中的 Orbit 应用数据后验证详情与返回、遥控器导航、搜索及下载空状态。真实网络安装测试独立启用：
+实体电视的 60FPS、输入延迟及低内存硬件表现尚未实测。导航在 API 31+ 使用局部背景模糊，旧系统和低内存设备回退为半透明材质；应用卡片比例与连续曲面流光已按参考图再次修正。完整分析与边界见[首页改造方案](docs/home-redesign-plan.md)。
+
+`test-tv.sh` 只连接 `emulator-5554`，清理该模拟器中的 Orbit 应用数据后验证页面切换、焦点恢复、截图弹层、搜索及下载空状态。真实网络安装测试独立启用：
 
 ```bash
 ./scripts/test-live-install.sh
@@ -101,6 +114,9 @@ adb shell am start -n dev.githubstore/.MainActivity
 ## 内容维护
 
 ```bash
+# 从各项目 README 同步展示资料；可加 --app newpipe 只更新一个项目
+python3 scripts/catalog.py metadata
+
 # 只生成候选，不自动上架；令牌可通过 GITHUB_TOKEN 环境变量提供
 python3 scripts/catalog.py sync --app jellyfin-tv --inspect --limit 3
 
@@ -112,13 +128,22 @@ python3 scripts/catalog.py bundle
 python3 scripts/catalog.py validate
 ```
 
-- `catalog/sources.json`：介绍、分类、截图来源、许可证与包名。
+- `catalog/sources.json`：仓库、包名、分类、许可证、README 路径与展示资料的回退值。
+- `catalog/readme-metadata.json`：从 README 提取的介绍、图标、截图、原文地址、抓取时间与内容摘要。
 - `catalog/reviewed.json`：核对过的版本、文件摘要和发布证书。
 - `catalog/candidates/`：自动生成的候选，不提交。
 - `app/src/main/assets/catalog.json`：可随 APK 分发的内置目录。
 - `scripts/inspect-apk.py`：使用 SDK 的 `apksigner` 和 `aapt` 检查实际文件，不执行上游代码。
 
 不在代码、目录或日志中放置 GitHub 令牌。公开 API 额度不足时等待恢复或在维护环境提供只读令牌；客户端不内置共享凭据。
+
+README 提取在内容维护端运行，生成内置目录或签名远程目录后供 TV 客户端读取；客户端的版本刷新仍查询 Releases，不会实时抓取 README。配置 `readme: {"ref": "main", "path": "README.md"}` 可以指定官方中文版本或实际文档位置；未配置时通过 GitHub API 发现默认 README。只提取简介、About / Description 和部分功能列表，不显示完整构建文档，也不自动翻译英文内容。
+
+仅更新应用资料时执行 `metadata` 和 `bundle` 即可，无需重新审核未发生变化的安装包。
+
+提取器支持常见 Markdown 图片、引用式图片和 HTML `img`，将相对路径及 GitHub `blob` 图片地址转换为原图地址，过滤徽章、商店按钮及赞助商 Logo。没有识别到图片时保留原有素材或字母占位；抓取失败保留上次成功资料并返回失败状态。TV 客户端支持 SVG，图片加载失败时显示字母占位。跨平台项目的截图保持 README 原貌，不代表 TV 适配结果。
+
+展示内容按“`metadataOverrides` 人工修正 → README 提取结果 → sources 回退值”的顺序合并；人工修正仅允许 `tagline`、`description`、`iconUrl`、`screenshots`、`mediaSource`、`readmeUrl`。包名、发布证书、版本、APK 大小与校验时间不从 README 推断。当前五个项目均已同步介绍；Jellyfin / NewPipe 提取到 Logo，LocalSend / NewPipe / Material Files 提取到截图。其余 README 未包含可识别的应用 Logo，继续使用字母占位；Jellyfin 保留原有官方文章截图及出处。
 
 ## 可选的签名远程目录
 

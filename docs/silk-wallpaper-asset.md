@@ -1,0 +1,11 @@
+# 流光背景素材
+
+- 文件：`app/src/main/res/drawable-nodpi/silk_wallpaper_v2.png`。
+- 用途：现有 TV 首页的背景纹理，以及导航毛玻璃的背景采样源；不包含应用图标、导航、文字或业务数据。
+- 方式：内置 ImageGen 工具生成。未使用 CLI / API 密钥，也未截取参考照片中的品牌内容。
+- 设计依据：用户参考图中的蓝紫粉连续丝绸曲面。用烘焙后的柔和曲面与明暗替换上一版硬边矢量色带，运行时只做轻微图层位移。
+- Android 12 / API 31 及以上对导航后方的独立背景副本进行 18dp 模糊；文字和图标在上层清晰绘制。旧系统、低内存设备保留半透明染色与折射亮边降级。
+
+## 最终生成提示词
+
+Use case: stylized-concept. Asset type: production wallpaper texture for an existing native Android TV app, NOT a screenshot or UI mockup. Create a pristine 16:9 1920x1080 landscape Apple tvOS-like abstract silk-light wallpaper matching the user's photographic reference: extremely pale almost white cool lavender #F7F8FC background; a single graceful continuous flowing translucent silk ribbon with two softly overlapping folds, concentrated in the UPPER RIGHT half, curving smoothly up into a rounded arch around x=74%, y=22%, down into a gentle valley around x=64%, y=40%, then sweeping out to the right edge around y=29%. A second delicate S-curve fold begins near x=35%,y=42%, rises softly and flows across the first. Main ribbon occupies roughly x=34%-105%, y=15%-48%. Smooth continuously curved silhouettes, fluid rounded contours, NO corners or straight line segments. Soft volumetric shading with pastel periwinkle #C8B6FF, icy blue #A9D8FF, blush pink #FFD2E7, a tiny warm pearly inner glow; glossy silk with delicate white rim illumination, feathered translucent edges, curved billowing folds, elegant subtle spatial depth. Render like a refined Apple system wallpaper photographed on an emissive screen, but provide only the perfectly flat digital wallpaper, no photography. LEFT 40% and LOWER 45% stay essentially empty clean pale #F7F8FC negative space for text and app tiles. Very low saturation, soft studio-like light, silky continuous gradients, absolutely no neon, no hard-edged bands, no angular polygons, no flat vector ribbons, no diagonal straight strips, no busy shapes, no bokeh, no particles, no grain. Absolutely NO UI, NO text, NO lettering, NO icons, NO logos, NO navigation, NO television frame, NO room, NO shadows of external objects. The result must feel soft, airy, premium, quiet and luminous, and closely match the continuous curved blue-purple-pink flowing silk from the supplied reference rather than invent a different wallpaper.

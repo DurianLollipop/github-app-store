@@ -9,6 +9,7 @@ if [ -x "/Users/durianlollipop/Library/Java/JavaVirtualMachines/jdk-17.0.18.jdk/
 fi
 export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$PWD/.gradle-home}"
 python3 scripts/catalog.py validate
+python3 -m unittest discover -s scripts/tests -v
 if [ -x .tooling/gradle/gradle-8.11.1/bin/gradle ]; then
   .tooling/gradle/gradle-8.11.1/bin/gradle testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --console=plain
 else

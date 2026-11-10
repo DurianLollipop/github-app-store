@@ -2,17 +2,22 @@ package dev.githubstore
 
 import android.app.Application
 import androidx.work.*
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.decode.SvgDecoder
 import dev.githubstore.data.*
 import dev.githubstore.install.PackageInspector
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
-class StoreApplication : Application() {
+class StoreApplication : Application(), ImageLoaderFactory {
     lateinit var catalog: CatalogRepository; private set
     lateinit var tasks: TaskRepository; private set
     lateinit var inspector: PackageInspector; private set
     val client: OkHttpClient by lazy { OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(45, TimeUnit.SECONDS).followSslRedirects(true).build() }
+    override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
+        .okHttpClient(client).components { add(SvgDecoder.Factory()) }.build()
     override fun onCreate() {
         super.onCreate()
         catalog = CatalogRepository(this, client)

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Curate GitHub releases: sync candidates, explicitly approve, then bundle.
 
-Only GitHub API metadata is fetched. No repository scripts are executed.
+README content and GitHub release metadata are fetched. No repository scripts are executed.
 GITHUB_TOKEN is optional and never written to candidate files or logs.
 """
 import argparse
+import base64
 import hashlib
 import importlib.util
 import json
@@ -16,10 +17,12 @@ import time
 from urllib.error import HTTPError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+from readme_metadata import extract, https_url, merge_metadata, repository_urls
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCES = ROOT / "catalog/sources.json"
 REVIEWED = ROOT / "catalog/reviewed.json"
+METADATA = ROOT / "catalog/readme-metadata.json"
 
 
 def read(path):
@@ -59,6 +62,9 @@ def validate(data):
         packages.add(app["packageName"])
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", app["repository"]):
             raise ValueError("无效 GitHub 仓库")
+        for url in [app.get("iconUrl"), app.get("readmeUrl"), app.get("mediaSource"), *app.get("screenshots", [])]:
+            if url and not https_url(url):
+                raise ValueError("应用素材必须使用公开 HTTPS 地址")
         for digest in app.get("certificateSha256", []):
             if not re.fullmatch(r"[a-f0-9]{64}", digest):
                 raise ValueError("证书指纹无效")
@@ -72,6 +78,55 @@ def validate(data):
                 if asset["size"] <= 0 or asset.get("versionCode", 0) <= 0 or asset.get("minSdk", 0) <= 0:
                     raise ValueError("审核资产缺少真实包元数据")
     return data
+
+
+def fetch_readme(app):
+    config = app.get("readme")
+    if not config:
+        # New repositories need no path configuration. Pin ref/path to prefer a translation.
+        repo = fetch_json(f"https://api.github.com/repos/{app['repository']}")
+        result = fetch_json(f"https://api.github.com/repos/{app['repository']}/readme")
+        ref, path = repo["default_branch"], result["path"]
+        content = base64.b64decode(result["content"], validate=False)
+    else:
+        ref, path = config["ref"], config["path"]
+        raw, _ = repository_urls(app["repository"], ref, path)
+        # No GitHub token is forwarded to media/raw hosts.
+        with urlopen(Request(raw, headers={"User-Agent": "OrbitStore-Catalog/0.1"}), timeout=45) as response:
+            if urlparse(response.url).hostname != "raw.githubusercontent.com":
+                raise ValueError("README 跳转至非 GitHub 原文地址")
+            content = response.read(1024 * 1024 + 1)
+    if len(content) > 1024 * 1024:
+        raise ValueError("README 超过 1 MB")
+    return content, ref, path
+
+
+def metadata(args):
+    apps = read(SOURCES)["apps"]
+    if args.app:
+        apps = [app for app in apps if app["id"] == args.app]
+    if not apps:
+        raise ValueError("未知应用")
+    records = read(METADATA) if METADATA.exists() else {"schemaVersion": 1, "apps": {}}
+    failures = []
+    for app in apps:
+        try:
+            content, ref, path = fetch_readme(app)
+            fields = extract(content.decode("utf-8-sig"), app["repository"], ref, path, app["name"])
+            # A symlink/error page/empty README must not silently replace a good record.
+            if not fields.get("description"):
+                raise ValueError("未提取到介绍；请检查 README 路径或设置 metadataOverrides")
+            record = {"repository": app["repository"], "ref": ref, "path": path,
+                      "fetchedAt": int(time.time() * 1000), "contentSha256": hashlib.sha256(content).hexdigest(), "content": fields}
+            validate({"schemaVersion": 1, "apps": [merge_metadata(dict(app), record)]})
+            records["apps"][app["id"]] = record
+            write(METADATA, records)
+            print(f"{app['id']}: README 介绍、{'图标' if fields.get('iconUrl') else '无图标（保留回退）'}、{len(fields.get('screenshots', []))} 张截图")
+        except Exception as error:
+            failures.append(app["id"])
+            print(f"{app['id']}: 保留原有资料；{error}", file=sys.stderr)
+    if failures:
+        raise ValueError("部分 README 同步失败：" + ", ".join(failures))
 
 
 def sync(args):
@@ -157,7 +212,9 @@ def approve(args):
 def bundle():
     source = read(SOURCES)
     reviewed = read(REVIEWED)["apps"] if REVIEWED.exists() else {}
+    records = read(METADATA)["apps"] if METADATA.exists() else {}
     for app in source["apps"]:
+        merge_metadata(app, records.get(app["id"]))
         app.update(reviewed.get(app["id"], {}))
     source["generatedAt"] = int(time.time() * 1000)
     validate(source)
@@ -173,6 +230,8 @@ def main():
     fetch.add_argument("--limit", type=int, choices=range(1, 21), default=3)
     fetch.add_argument("--inspect", action="store_true")
     fetch.add_argument("--sdk", type=Path, default=Path(os.environ.get("ANDROID_HOME", ROOT / ".tooling/android-sdk")))
+    content = commands.add_parser("metadata", help="从项目 README 同步介绍、Logo 与截图，不修改安装包审核记录")
+    content.add_argument("--app")
     review = commands.add_parser("approve")
     review.add_argument("--app", required=True)
     review.add_argument("--tag", required=True)
@@ -181,6 +240,7 @@ def main():
     commands.add_parser("validate")
     args = parser.parse_args()
     if args.command == "sync": sync(args)
+    elif args.command == "metadata": metadata(args)
     elif args.command == "approve": approve(args)
     elif args.command == "bundle": bundle()
     else:

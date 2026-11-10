@@ -1,9 +1,7 @@
 package dev.githubstore.ui
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,23 +18,36 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-val Backdrop = Color(0xFF080A0F)
-val Panel = Color(0xFF14171F)
-val Muted = Color(0xFF9299A8)
-val Ink = Color(0xFFF5F6FA)
-val Accent = Color(0xFF9DBEFF)
-val Good = Color(0xFFA1DDBB)
+val Backdrop = Color(0xFFF7F8FC)
+val Panel = Color.White
+val Sidebar = Color(0xFFEBEDF2)
+val Control = Color(0xFFE8E8ED)
+val Selection = Color(0xFFE3EEFF)
+val Muted = Color(0xFF778198)
+val Ink = Color(0xFF202437)
+val Accent = Color(0xFF0066CC)
+val Good = Color(0xFF24804A)
+val Error = Color(0xFFB42332)
 
 @Composable fun OrbitTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = darkColorScheme(primary = Accent, onPrimary = Backdrop, background = Backdrop,
-        surface = Panel, onSurface = Ink, onBackground = Ink),
-        typography = Typography(bodyLarge = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 15.sp))) {
-        androidx.tv.material3.MaterialTheme { content() }
+    val reducedMotion = rememberSystemReducedMotion()
+    CompositionLocalProvider(LocalReducedMotion provides reducedMotion) {
+        MaterialTheme(colorScheme = lightColorScheme(primary = Accent, onPrimary = Color.White, background = Backdrop,
+            surface = Panel, surfaceVariant = Control, onSurface = Ink, onSurfaceVariant = Muted,
+            onBackground = Ink, outline = Color(0xFFC7C7CC), error = Error),
+            typography = Typography(bodyLarge = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 15.sp, lineHeight = 20.sp))) {
+            androidx.tv.material3.MaterialTheme(colorScheme = androidx.tv.material3.lightColorScheme(
+                primary = Accent, onPrimary = Color.White, background = Backdrop, onBackground = Ink,
+                surface = Panel, onSurface = Ink)) { content() }
+        }
     }
 }
 
@@ -47,41 +58,61 @@ val Good = Color(0xFFA1DDBB)
     color: Color = Panel,
     radius: Int = 18,
     scale: Float = 1.025f,
+    contentColor: Color = Ink,
+    focusedColor: Color = Panel,
+    focusedContentColor: Color = contentColor,
+    focusRing: Color = Accent,
     content: @Composable BoxScope.(focused: Boolean) -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val pressed by interaction.collectIsPressedAsState()
-    val zoom by animateFloatAsState(if (pressed) .98f else if (focused) scale else 1f,
-        spring(dampingRatio = 1f, stiffness = 500f), label = "focus-scale")
-    val fill by animateColorAsState(if (focused) Color(0xFFF0F3FA) else if (selected) Color(0xFF272F40) else color, label = "focus-fill")
-    Box(modifier.graphicsLayer { scaleX = zoom; scaleY = zoom }
-        .clip(RoundedCornerShape(radius.dp)).background(fill)
-        .border(if (focused) 2.dp else 1.dp, if (focused) Color.White else Color.White.copy(alpha = if (selected) .14f else .055f), RoundedCornerShape(radius.dp))
-        .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)) {
-        CompositionLocalProvider(LocalContentColor provides if (focused) Backdrop else Ink) { content(focused) }
+    val reduced = LocalReducedMotion.current
+    val active = LocalPageActive.current
+    val zoom by animateFloatAsState(if (reduced) 1f else if (pressed) .975f else if (focused) scale else 1f,
+        if (reduced) snap() else spring(dampingRatio = 1f, stiffness = 900f), label = "focus-scale")
+    val lift by animateFloatAsState(if (focused && !pressed && !reduced) 1.5f else 0f,
+        if (reduced) snap() else spring(dampingRatio = 1f, stiffness = 900f), label = "focus-lift")
+    val shadow by animateFloatAsState(if (focused) 8f else 0f, motionTween(140), label = "focus-depth")
+    val fill by animateColorAsState(if (focused) focusedColor else if (selected) Selection else color,
+        motionTween(130), label = "focus-fill")
+    val foreground by animateColorAsState(if (focused) focusedContentColor else contentColor, motionTween(100), label = "focus-ink")
+    val shape = RoundedCornerShape(radius.dp)
+    Box(modifier.zIndex(if (focused) 1f else 0f).graphicsLayer {
+            scaleX = zoom; scaleY = zoom; translationY = -lift.dp.toPx()
+            shadowElevation = shadow.dp.toPx(); this.shape = shape
+            ambientShadowColor = Color.Black.copy(.10f); spotShadowColor = Color.Black.copy(.15f)
+        }
+        .clip(shape).background(fill)
+        .border(if (focused) 2.dp else 1.dp, if (focused) focusRing else Ink.copy(alpha = if (selected) .05f else .035f), shape)
+        .semantics { this.selected = selected }
+        .clickable(enabled = active, interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)) {
+        CompositionLocalProvider(LocalContentColor provides foreground) { content(focused) }
     }
 }
 
 @Composable fun TvButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, primary: Boolean = false,
                          icon: (@Composable () -> Unit)? = null) {
-    FocusSurface(onClick, modifier.heightIn(min = 43.dp), color = if (primary) Color(0xFF344F7D) else Color(0xFF20252F), radius = 50, scale = 1.035f) { _ ->
+    FocusSurface(onClick, modifier.heightIn(min = 43.dp), color = if (primary) Accent else Control,
+        contentColor = if (primary) Color.White else Ink,
+        focusedColor = if (primary) Color(0xFF0057B8) else Panel,
+        focusRing = if (primary) Color.White else Accent, radius = 50, scale = 1.035f) { _ ->
         Row(Modifier.padding(horizontal = 19.dp, vertical = 11.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             icon?.invoke()
-            Text(text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = LocalContentColor.current)
+            Text(text, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, color = LocalContentColor.current)
         }
     }
 }
 
 @Composable fun Eyebrow(text: String, color: Color = Accent) {
-    Text(text, color = color, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.5.sp)
+    Text(text, color = color, fontSize = 10.sp, lineHeight = 14.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.5.sp)
 }
 
 @Composable fun SectionTitle(title: String, subtitle: String? = null, trailing: (@Composable () -> Unit)? = null) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(title, color = Ink, fontSize = 23.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-.5).sp)
-            if (subtitle != null) Text(subtitle, color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
+            Text(title, color = Ink, fontSize = 23.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-.5).sp)
+            if (subtitle != null) Text(subtitle, color = Muted, fontSize = 11.sp, lineHeight = 16.sp, modifier = Modifier.padding(top = 5.dp))
         }
         trailing?.invoke()
     }

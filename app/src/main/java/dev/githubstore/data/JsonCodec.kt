@@ -33,6 +33,7 @@ object JsonCodec {
         color = j.getString("color").removePrefix("#").toLong(16) or 0xFF000000,
         symbol = j.getString("symbol"), iconUrl = j.optString("iconUrl"),
         screenshots = j.optJSONArray("screenshots")?.strings().orEmpty(), mediaSource = j.optString("mediaSource"),
+        readmeUrl = j.optString("readmeUrl"),
         tvStatus = j.optString("tvStatus", "尚未进行 TV 真机验证"),
         certificateSha256 = j.optJSONArray("certificateSha256")?.strings()?.map { it.lowercase() }?.toSet().orEmpty(),
         releases = j.optJSONArray("releases")?.objects()?.map(::readRelease).orEmpty(), checkedAt = j.optLong("checkedAt"),

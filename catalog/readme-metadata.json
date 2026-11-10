@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "apps": {
+    "jellyfin-tv": {
+      "repository": "jellyfin/jellyfin-androidtv",
+      "ref": "master",
+      "path": "README.md",
+      "fetchedAt": 1794262816056,
+      "contentSha256": "89745bb6cce4acd635bb8cd0dd9f41f5f6feb5291b5e4193efb579c49d568c32",
+      "content": {
+        "readmeUrl": "https://github.com/jellyfin/jellyfin-androidtv/blob/master/README.md",
+        "description": "Jellyfin for Android TV is a Jellyfin client for Android TV, Nvidia Shield, and Amazon Fire TV devices. We welcome all contributions and pull requests! If you have a larger feature in mind please open an issue so we can discuss the implementation before you start.",
+        "tagline": "Jellyfin for Android TV is a Jellyfin client for Android TV, Nvidia Shield, and Amazon…",
+        "iconUrl": "https://raw.githubusercontent.com/jellyfin/jellyfin-ux/master/branding/SVG/banner-logo-solid.svg?sanitize=true"
+      }
+    },
+    "tv-bro": {
+      "repository": "truefedex/tv-bro",
+      "ref": "master",
+      "path": "README.md",
+      "fetchedAt": 1794262817284,
+      "contentSha256": "e43e6733e50e3073b03df5ed2b96496224f80e195b494b9ca2015a8ff5eb9b4c",
+      "content": {
+        "readmeUrl": "https://github.com/truefedex/tv-bro/blob/master/README.md",
+        "description": "Simple web browser optimized to use with TV remote\n\n• working with TV remote\n• tabs and bookmarks support\n• voice search support\n• switch user agent support\n• use Android builtin web rendering engine (WebKit/Blink based)\n• built-in download manager",
+        "tagline": "Simple web browser optimized to use with TV remote"
+      }
+    },
+    "localsend": {
+      "repository": "localsend/localsend",
+      "ref": "main",
+      "path": "support/readme/README_ZH.md",
+      "fetchedAt": 1794262818199,
+      "contentSha256": "3384aae16e8bc310745a56b4ea8cc7d4c0dd00c9aeebef8f487ee732741276f9",
+      "content": {
+        "readmeUrl": "https://github.com/localsend/localsend/blob/main/support/readme/README_ZH.md",
+        "description": "LocalSend 是一个自由、开源的应用程序，允许你在本地网络上安全地与附近设备分享文件和消息，无需互联网连接。\n\nLocalSend 是一个跨平台应用程序，使用 REST API 和 HTTPS 加密实现设备之间的安全通信。与依赖外部服务器的其他消息应用程序不同，LocalSend 不需要互联网连接或第三方服务器，因此成为本地通信的快速可靠解决方案。",
+        "tagline": "LocalSend 是一个自由、开源的应用程序，允许你在本地网络上安全地与附近设备分享文件和消息，无需互联网连接。",
+        "screenshots": [
+          "https://localsend.org/img/screenshot-iphone.webp",
+          "https://localsend.org/img/screenshot-pc.webp"
+        ],
+        "mediaSource": "https://github.com/localsend/localsend/blob/main/support/readme/README_ZH.md"
+      }
+    },
+    "newpipe": {
+      "repository": "TeamNewPipe/NewPipe",
+      "ref": "dev",
+      "path": "doc/README.md",
+      "fetchedAt": 1794262819199,
+      "contentSha256": "b49b4c3ba8d7daaef303aebadcee4723af82742899406446aa5335b1cbd68214",
+      "content": {
+        "readmeUrl": "https://github.com/TeamNewPipe/NewPipe/blob/dev/doc/README.md",
+        "description": "A libre lightweight streaming front-end for Android.\n\nNewPipe works by fetching the required data from the official API (e.g. PeerTube) of the service you're using. If the official API is restricted (e.g. YouTube) for our purposes, or is proprietary, the app parses the website or uses an internal API instead. This means that you don't need an account on any service to use NewPipe.\n\nAlso, since they are free and open source software, neither the app nor the Extractor use any proprietary libraries or frameworks, such as Google Play Services. This means you can use NewPipe on devices or custom ROMs that do not have Google apps installed.\n\n• Watch videos at resolutions up to 4K\n• Listen to audio in the background, only loading the audio stream to save data\n• Popup mode (floating player, aka Picture-in-Picture)\n• Watch live streams\n• Show/hide subtitles/closed captions\n• Search videos and audios (on YouTube, you can specify the content language as well)",
+        "tagline": "A libre lightweight streaming front-end for Android.",
+        "iconUrl": "https://raw.githubusercontent.com/TeamNewPipe/NewPipe/dev/assets/new_pipe_icon_5.png",
+        "screenshots": [
+          "https://raw.githubusercontent.com/TeamNewPipe/NewPipe/dev/fastlane/metadata/android/en-US/images/phoneScreenshots/00.png",
+          "https://raw.githubusercontent.com/TeamNewPipe/NewPipe/dev/fastlane/metadata/android/en-US/images/phoneScreenshots/01.png",
+          "https://raw.githubusercontent.com/TeamNewPipe/NewPipe/dev/fastlane/metadata/android/en-US/images/phoneScreenshots/02.png",
+          "https://raw.githubusercontent.com/TeamNewPipe/NewPipe/dev/fastlane/metadata/android/en-US/images/phoneScreenshots/03.png",
+          "https://raw.githubusercontent.com/TeamNewPipe/NewPipe/dev/fastlane/metadata/android/en-US/images/phoneScreenshots/04.png",
+          "https://raw.githubusercontent.com/TeamNewPipe/NewPipe/dev/fastlane/metadata/android/en-US/images/phoneScreenshots/05.png",
+          "https://raw.githubusercontent.com/TeamNewPipe/NewPipe/dev/fastlane/metadata/android/en-US/images/phoneScreenshots/06.png",
+          "https://raw.githubusercontent.com/TeamNewPipe/NewPipe/dev/fastlane/metadata/android/en-US/images/phoneScreenshots/07.png"
+        ],
+        "mediaSource": "https://github.com/TeamNewPipe/NewPipe/blob/dev/doc/README.md"
+      }
+    },
+    "material-files": {
+      "repository": "zhanghai/MaterialFiles",
+      "ref": "master",
+      "path": "README_zh-CN.md",
+      "fetchedAt": 1794262820240,
+      "contentSha256": "93bbe8cfcce8e324145822aea7416a5538bcc10fdcc0e28a8de0a958e2a0ca80",
+      "content": {
+        "readmeUrl": "https://github.com/zhanghai/MaterialFiles/blob/master/README_zh-CN.md",
+        "description": "一个开源的 Material Design 文件管理器，适用于 Android 5.0+。\n\n• 开源：轻量、简洁并且安全。\n• Material Design：遵循 Material Design 规范，并且注重细节。\n• 面包屑导航栏：点击导航栏所显示路径中的任一文件夹即可快速访问。\n• Root 支持：使用 root 权限查看和管理文件。\n• 压缩文件支持：查看、提取和创建常见的压缩文件。\n• NAS 支持：查看和管理 FTP、SFTP、SMB 和 WebDAV 服务器上的文件。",
+        "tagline": "一个开源的 Material Design 文件管理器，适用于 Android 5.0+。",
+        "screenshots": [
+          "https://raw.githubusercontent.com/zhanghai/MaterialFiles/master/fastlane/metadata/android/en-US/images/phoneScreenshots/1.png",
+          "https://raw.githubusercontent.com/zhanghai/MaterialFiles/master/fastlane/metadata/android/en-US/images/phoneScreenshots/2.png",
+          "https://raw.githubusercontent.com/zhanghai/MaterialFiles/master/fastlane/metadata/android/en-US/images/phoneScreenshots/3.png",
+          "https://raw.githubusercontent.com/zhanghai/MaterialFiles/master/fastlane/metadata/android/en-US/images/phoneScreenshots/4.png",
+          "https://raw.githubusercontent.com/zhanghai/MaterialFiles/master/fastlane/metadata/android/en-US/images/phoneScreenshots/5.png",
+          "https://raw.githubusercontent.com/zhanghai/MaterialFiles/master/fastlane/metadata/android/en-US/images/phoneScreenshots/6.png"
+        ],
+        "mediaSource": "https://github.com/zhanghai/MaterialFiles/blob/master/README_zh-CN.md"
+      }
+    }
+  }
+}

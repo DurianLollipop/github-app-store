@@ -14,6 +14,7 @@ data class StoreApp(
     val iconUrl: String = "",
     val screenshots: List<String> = emptyList(),
     val mediaSource: String = "",
+    val readmeUrl: String = "",
     val tvStatus: String = "尚未进行 TV 真机验证",
     val certificateSha256: Set<String> = emptySet(),
     val releases: List<AppRelease> = emptyList(),

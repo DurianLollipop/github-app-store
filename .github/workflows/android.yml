@@ -20,6 +20,7 @@ jobs:
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
       - run: python3 scripts/catalog.py validate
+      - run: python3 -m unittest discover -s scripts/tests -v
       - run: ./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --stacktrace
       - uses: actions/upload-artifact@v4
         if: always()
