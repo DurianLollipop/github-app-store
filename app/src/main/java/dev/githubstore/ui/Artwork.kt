@@ -12,25 +12,47 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import dev.githubstore.domain.StoreApp
 
-@Composable fun AppMark(app: StoreApp, modifier: Modifier = Modifier, size: Int = 58, fallbackShading: Boolean = true) {
+// This known README asset has a central mark on its own opaque brand background.
+internal fun isCenteredBannerArtwork(url: String): Boolean =
+    url.substringBefore('?').endsWith("/banner-logo-solid.svg")
+
+@Composable fun AppMark(app: StoreApp, modifier: Modifier = Modifier, size: Int = 58,
+                       fallbackShading: Boolean = true, shape: Shape? = RoundedCornerShape((size * .24f).dp),
+                       symbolShadow: Shadow? = null) {
     var loaded by remember(app.iconUrl) { mutableStateOf(false) }
+    val bannerArtwork = isCenteredBannerArtwork(app.iconUrl)
+    val tileGradient = remember(app.color) {
+        val hsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(app.color.toInt(), hsv)
+        val top = Color(android.graphics.Color.HSVToColor(floatArrayOf(
+            hsv[0] - 9f, (hsv[1] * .94f).coerceAtMost(1f), (hsv[2] + .22f).coerceAtMost(1f))))
+        val bottom = Color(android.graphics.Color.HSVToColor(floatArrayOf(
+            hsv[0] + 5f, (hsv[1] * 1.08f).coerceAtMost(1f), (hsv[2] + .06f).coerceAtMost(1f))))
+        Brush.linearGradient(listOf(top, bottom))
+    }
+
     // Original artwork sits on a neutral surface. Brand gradients belong only to
     // the explicit letter fallback, never behind a successfully loaded logo.
-    Box(modifier.size(size.dp).clip(RoundedCornerShape((size * .24f).dp))
+    // A parent material can own the silhouette, avoiding two independently
+    // antialiased masks around the artwork and its lighting overlay.
+    Box(modifier.size(size.dp).then(if (shape != null) Modifier.clip(shape) else Modifier)
         .background(if (loaded) Color.White else Color(app.color.toInt())), contentAlignment = Alignment.Center) {
+        if (!loaded && !fallbackShading) Box(Modifier.matchParentSize().background(tileGradient))
         if (!loaded && fallbackShading) Box(Modifier.matchParentSize().background(Brush.linearGradient(
             listOf(Color.White.copy(.18f), Color.Transparent, Color.Black.copy(.10f)))))
-        if (!loaded) Text(app.symbol, color = Color.White, fontSize = (size * .46f).sp, fontWeight = FontWeight.Bold)
+        if (!loaded) Text(app.symbol, color = Color.White, fontSize = (size * .46f).sp, fontWeight = FontWeight.Bold,
+            style = TextStyle(shadow = symbolShadow))
         if (app.iconUrl.isNotEmpty()) AsyncImage(app.iconUrl, "${app.name} 图标",
-            Modifier.fillMaxSize().padding((size * .12f).dp).alpha(if (loaded) 1f else 0f),
+            Modifier.fillMaxSize().padding(if (bannerArtwork) 0.dp else (size * .12f).dp).alpha(if (loaded) 1f else 0f),
             // This README asset is a centered symbol in a 5:1 transparent banner.
             // Crop its empty sides; fit other logos without distorting/cutting them.
-            contentScale = if (app.iconUrl.substringBefore('?').endsWith("/banner-logo-solid.svg")) ContentScale.Crop else ContentScale.Fit,
+            contentScale = if (bannerArtwork) ContentScale.Crop else ContentScale.Fit,
             onLoading = { loaded = false }, onSuccess = { loaded = true }, onError = { loaded = false })
     }
 }

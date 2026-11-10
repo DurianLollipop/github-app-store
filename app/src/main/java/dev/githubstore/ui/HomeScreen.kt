@@ -27,14 +27,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.*
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -272,6 +271,9 @@ private class GridNavigationSession {
     }
 }
 
+private val HomeCardCornerRadius = 22.dp
+private val HomeCardShape = RoundedCornerShape(HomeCardCornerRadius)
+
 @Composable private fun HomeAppTile(app: StoreApp, modifier: Modifier, onFocus: () -> Unit, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -281,10 +283,14 @@ private class GridNavigationSession {
         if (reduced) snap() else spring(dampingRatio = .86f, stiffness = 560f), label = "app-focus-scale")
     val lift by animateFloatAsState(if (focused && !pressed && !reduced) 3f else 0f,
         if (reduced) snap() else spring(dampingRatio = .90f, stiffness = 560f), label = "app-focus-lift")
-    val elevation by animateFloatAsState(if (focused) 18f else 6f, motionTween(210), label = "app-shadow")
+    val elevation by animateFloatAsState(if (focused) 16f else 7f, motionTween(210), label = "app-shadow")
     val glow by animateFloatAsState(if (focused) 1f else 0f, motionTween(200), label = "app-halo")
     val nameColor by animateColorAsState(if (focused) Ink else Ink.copy(.82f), motionTween(180), label = "app-name")
-    val shape = RoundedCornerShape(22.dp)
+    val shape = HomeCardShape
+    val density = LocalDensity.current
+    val symbolShadow = remember(density) { with(density) {
+        Shadow(Color(0xFF142039).copy(.17f), Offset(0f, .4.dp.toPx()), .8.dp.toPx())
+    } }
     Column(modifier.fillMaxWidth().testTag("app-tile-${app.id}").zIndex(if (focused) 1f else 0f)
         .onFocusChanged { if (it.isFocused) onFocus() }
         .clickable(enabled = LocalPageActive.current, interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick),
@@ -292,15 +298,25 @@ private class GridNavigationSession {
         Box(Modifier.padding(horizontal = 4.dp).fillMaxWidth().aspectRatio(1.4f).graphicsLayer {
             scaleX = scale; scaleY = scale; translationY = -lift.dp.toPx()
             this.shape = shape; shadowElevation = elevation.dp.toPx()
-            ambientShadowColor = Color(0xFF6A7196).copy(.06f); spotShadowColor = Color(0xFF6A7196).copy(.10f)
+            ambientShadowColor = Color(0xFF6A7196).copy(.06f); spotShadowColor = Color.Transparent
         }.drawWithCache {
             val halo = Brush.radialGradient(listOf(Color(0xFF9C9FF1).copy(.22f), Color(0xFFBFC9FF).copy(.08f), Color.Transparent),
                 Offset(size.width / 2, size.height / 2), size.maxDimension * .78f)
             val shadowRadius = size.width * .70f
-            val shadowCenter = Offset(size.width / 2 + 5.dp.toPx(), size.height / 2 + 8.dp.toPx())
+            val shadowCenter = Offset(size.width / 2 + 11.dp.toPx(), size.height / 2 + 13.dp.toPx())
             val castShadow = Brush.radialGradient(listOf(Color(0xFF4D5678).copy(.22f),
                 Color(0xFF4D5678).copy(.08f), Color.Transparent), Offset.Zero, shadowRadius)
+            val contactRadius = size.width * .48f
+            val contactCenter = Offset(size.width / 2 + 9.dp.toPx(), size.height + 4.dp.toPx())
+            val contactShadow = Brush.radialGradient(listOf(Color(0xFF34415F).copy(.12f),
+                Color(0xFF34415F).copy(.045f), Color.Transparent), Offset.Zero, contactRadius)
             onDrawBehind {
+                // A narrow contact shadow grounds the rounded body; the broad
+                // ambient shadow establishes its separation from the wallpaper.
+                withTransform({
+                    translate(contactCenter.x, contactCenter.y)
+                    scale(1f, .22f, Offset.Zero)
+                }) { drawCircle(contactShadow, contactRadius, Offset.Zero, alpha = .85f + glow * .15f) }
                 // All cards share a light above-left; the soft cast falls down-right.
                 withTransform({
                     translate(shadowCenter.x, shadowCenter.y)
@@ -309,52 +325,22 @@ private class GridNavigationSession {
                 if (glow > 0f) drawCircle(halo, size.maxDimension * .78f, alpha = glow)
             }
         }) {
-            AppMark(app, Modifier.fillMaxSize(), size = 86, fallbackShading = false)
-            Box(Modifier.matchParentSize().clip(shape).directionalCardLight())
+            // Flatten artwork and light first, then apply one shared 22dp mask.
+            // Separate corner masks left mismatched edges on the lower curves.
+            Box(Modifier.matchParentSize().graphicsLayer {
+                this.shape = shape
+                clip = true
+                compositingStrategy = CompositingStrategy.Offscreen
+            }) {
+                AppMark(app, Modifier.fillMaxSize(), size = 86, fallbackShading = false, shape = null, symbolShadow = symbolShadow)
+                Box(Modifier.matchParentSize().beveledCardMaterial(HomeCardCornerRadius,
+                    neutralSurface = app.iconUrl.isNotEmpty() && !isCenteredBannerArtwork(app.iconUrl)))
+            }
             // Focus is a separate state cue, never a permanent white rim.
             Box(Modifier.matchParentSize().border(1.25.dp, Color(0xFF9DA3E2).copy(alpha = glow * .82f), shape))
         }
         Text(app.name, color = nameColor, fontSize = 13.sp, lineHeight = 19.sp, fontWeight = FontWeight.Medium,
             textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth().padding(top = 11.dp, bottom = 5.dp))
-    }
-}
-
-/** One broad source above-left: diffuse face, grazing rim, unlit opposite edge. */
-private fun Modifier.directionalCardLight(): Modifier = drawWithCache {
-    val w = size.width; val h = size.height
-    val inset = .65.dp.toPx()
-    val r = 22.dp.toPx().coerceAtMost(h / 2)
-    val diffuse = Brush.linearGradient(
-        0f to Color.White.copy(.17f), .38f to Color.White.copy(.045f),
-        .60f to Color.Transparent, 1f to Color(0xFF202437).copy(.085f),
-        start = Offset.Zero, end = Offset(w, h))
-    // The source is outside the tile, so its reflection sweeps across the face
-    // instead of producing four luminous corner spots.
-    val specular = Brush.radialGradient(
-        listOf(Color.White.copy(.30f), Color.White.copy(.07f), Color.Transparent),
-        Offset(-w * .20f, -h * .55f), w * 1.15f)
-    val litRim = Path().apply {
-        moveTo(w * .94f, inset)
-        lineTo(r, inset)
-        arcTo(Rect(inset, inset, r * 2 - inset, r * 2 - inset), -90f, -90f, false)
-        lineTo(inset, h * .83f)
-    }
-    val rimLight = Brush.radialGradient(
-        0f to Color.White.copy(.92f), .28f to Color.White.copy(.55f),
-        .72f to Color.White.copy(.10f), 1f to Color.Transparent,
-        center = Offset(r * .45f, r * .20f), radius = w * .95f)
-    val unlitRim = Path().apply {
-        moveTo(w * .46f, h - inset)
-        lineTo(w - r, h - inset)
-        arcTo(Rect(w - r * 2 + inset, h - r * 2 + inset, w - inset, h - inset), 90f, -90f, false)
-        lineTo(w - inset, h * .38f)
-    }
-    val rimShade = Brush.linearGradient(listOf(Color.Transparent, Color(0xFF30394F).copy(.13f)), Offset(w * .40f, h * .30f), Offset(w, h))
-    onDrawBehind {
-        drawRect(diffuse)
-        drawRect(specular)
-        drawPath(unlitRim, rimShade, style = Stroke(.75.dp.toPx()))
-        drawPath(litRim, rimLight, style = Stroke(.9.dp.toPx()))
     }
 }

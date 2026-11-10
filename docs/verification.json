@@ -7,7 +7,7 @@
   "liveInstallTests": 1,
   "device": "Android TV API 33 ARM64 emulator; normal motion 1920x1080 @ 320dpi, reduced motion 1280x720 @ 213dpi",
   "lintErrors": 0,
-  "apkSha256": "8a46c4c6faf09020f947d4519b9f50531cd154a181fbbbb02bc06f75143d7aff",
+  "apkSha256": "4574edea2ba63b699dbc7961ad52538141620bde411bb76aa0986d63999e47ae",
   "apkBytes": 20719649,
   "readmeMetadataTests": 16,
   "readmeMetadataFailures": 0,
@@ -24,7 +24,15 @@
   "productionCatalogApps": 5,
   "wallpaperImplementation": "ImageGen 烘焙的连续丝绸曲面 PNG，运行时仅做 18 秒轻微图层位移",
   "homeCardAspectRatio": 1.4,
-  "homeCardHighlight": "统一左上外部光源，面反射向右下衰减，朝光局部亮边与右下软投影；无常态白色包边，焦点环独立绘制",
+  "homeCardHighlight": "左上面反射沿对角线衰减，朝光亮边随位置衰减；无底部反光及全周白边；投影偏右下，焦点环独立",
   "wallpaperAsset": "app/src/main/res/drawable-nodpi/silk_wallpaper_v2.png",
-  "lightingValidation": "本轮受光调整后：1080p 正常动画、720p 关闭动画各 13 项原生交互通过；实体电视未验证"
+  "lightingValidation": "本轮受光调整后：1080p 正常动画、720p 关闭动画各 13 项原生交互通过；实体电视未验证",
+  "homeCardCornerRadiusDp": 22,
+  "homeCardClipping": "图标与受光合成后统一裁剪一次；移除底边独立暗色描线；阴影与焦点环共享轮廓",
+  "cornerRenderingValidation": "圆角修正后：1080p 正常动画、720p 关闭动画各 13 项原生交互通过，普通与聚焦截图已更新；实体电视未验证",
+  "homeCardMaterial": "圆角距离和区域反射缓存贴图，宽度最多 384px、8 项缓存；真实图标及裁剪原生分辨率",
+  "materialValidation": "本轮构建、单元测试及 Lint 通过；原生交互回归结果见 clearMaterialValidation；旧录屏和720p截图属于上一版材质",
+  "reducedMotionValidationScope": "13 项减少动画测试属于上一轮材质，本轮未重复",
+  "clearMaterialValidation": "构建、Lint、27 项 Android 单元测试、16 项目录测试及 13 项原生交互回归通过；截图 home-clear.png；实体电视未验证",
+  "directionalLightValidation": "本轮构建、Lint及已有单元测试通过；模拟器普通/聚焦态截图核验；本轮未重复13项自动交互或实体电视测试"
 }
