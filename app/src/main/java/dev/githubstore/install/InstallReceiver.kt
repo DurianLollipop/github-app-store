@@ -12,6 +12,7 @@ import dev.githubstore.R
 import dev.githubstore.StoreApplication
 import dev.githubstore.domain.TaskStatus
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.*
 
 object InstallConfirmation { val pending = MutableStateFlow<Intent?>(null) }
 
@@ -39,11 +40,23 @@ class InstallReceiver : BroadcastReceiver() {
                     .setContentIntent(pending).setAutoCancel(true).build()) }
             }
             PackageInstaller.STATUS_SUCCESS -> {
-                val installed = store.inspector.installed(task.packageName)
-                store.tasks.update(id) { it.copy(status = if (installed != null) TaskStatus.INSTALLED else TaskStatus.FAILED,
-                    error = if (installed == null) "系统报告成功，但安装状态暂不可见，请重新检查" else null) }
-                if (installed != null) store.tasks.file(id).delete()
-                context.getSystemService(NotificationManager::class.java).cancel(task.sessionId ?: 20)
+                store.tasks.update(id) { it.copy(installSucceeded = true, error = "系统已成功，正在核对包身份") }
+                val pending = goAsync()
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        var installed: dev.githubstore.domain.InstalledApp? = null
+                        for (attempt in 0 until 12) {
+                            val actual = store.inspector.installed(task.packageName)
+                            if (actual != null && actual == task.inspected) { installed = actual; break }
+                            delay(200)
+                        }
+                        if (installed != null) store.taskApp(task)?.let { app -> store.library.bind(app, installed, task.asset.name, task.releaseTag, task.prerelease) }
+                        store.tasks.update(id) { it.copy(status = if (installed != null) TaskStatus.INSTALLED else TaskStatus.FAILED,
+                            error = if (installed == null) "系统报告成功，但包身份尚未匹配；可见性受系统限制，请重新检查" else null) }
+                        if (installed != null) store.tasks.file(id).delete()
+                        context.getSystemService(NotificationManager::class.java).cancel(task.sessionId ?: 20)
+                    } finally { pending.finish() }
+                }
             }
             else -> {
                 val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -1)

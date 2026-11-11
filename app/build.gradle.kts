@@ -11,10 +11,11 @@ android {
         applicationId = "dev.githubstore"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.2.2-dev"
+        versionCode = 7
+        versionName = "0.3.1-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         fun quotedProperty(name: String) = "\"" + providers.gradleProperty(name).orElse("").get().replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+        buildConfigField("String", "GITHUB_CLIENT_ID", quotedProperty("orbitGitHubClientId"))
         buildConfigField("String", "CATALOG_URL", quotedProperty("orbitCatalogUrl"))
         buildConfigField("String", "CATALOG_PUBLIC_KEY", quotedProperty("orbitCatalogPublicKey"))
     }
@@ -44,6 +45,9 @@ dependencies {
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.commonmark:commonmark:0.24.0")
+    implementation("org.commonmark:commonmark-ext-gfm-tables:0.24.0")
+    implementation("org.jsoup:jsoup:1.21.2")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil-svg:2.7.0")
     implementation("androidx.work:work-runtime-ktx:2.10.1")

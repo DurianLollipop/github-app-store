@@ -45,9 +45,11 @@ class DownloadEngineTest {
         val result = runCatching { runBlocking { DownloadEngine(OkHttpClient(), false).download("a/b", asset(server), folder.newFile("404.part"), java.io.File(folder.root, "404.apk"), {}, {}) } }
         assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("移除"))
     }
-    @Test fun `missing digest performs no network request`() = withServer { server ->
-        val result = runCatching { runBlocking { DownloadEngine(OkHttpClient(), false).download("a/b", asset(server, null), folder.newFile("missing.part"), java.io.File(folder.root, "missing.apk"), {}, {}) } }
-        assertTrue(result.isFailure); assertEquals(0, server.requestCount)
+    @Test fun `missing upstream digest downloads file without claiming upstream verification`() = withServer { server ->
+        server.enqueue(MockResponse().setBody(String(content)))
+        val output = java.io.File(folder.root, "missing.apk")
+        runBlocking { DownloadEngine(OkHttpClient(), false).download("a/b", asset(server, null), folder.newFile("missing.part"), output, {}, {}) }
+        assertEquals(digest, sha256(output)); assertEquals(1, server.requestCount)
     }
     @Test fun `production origin policy rejects arbitrary URLs before transfer`() = withServer { server ->
         val result = runCatching { runBlocking { DownloadEngine(OkHttpClient()).download("a/b", asset(server), folder.newFile("origin.part"), java.io.File(folder.root, "origin.apk"), {}, {}) } }

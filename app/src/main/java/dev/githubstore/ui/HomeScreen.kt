@@ -204,7 +204,7 @@ private class GridNavigationSession {
 }
 
 @Composable internal fun HomePage(apps: List<StoreApp>, scroll: LazyGridState, memory: HomeFocusMemory,
-    navigationFocus: FocusRequester, restoreFocus: Boolean, onSelect: (StoreApp) -> Unit) {
+    navigationFocus: FocusRequester, restoreFocus: Boolean, badges: Map<String, String> = emptyMap(), title: String = "好应用，自由探索。", eyebrow: String = "开 源 应 用", subtitle: String = "让开源的精彩，来到你的大屏。", showHeading: Boolean = true, onSelect: (StoreApp) -> Unit) {
     val active = LocalPageActive.current
     val scope = rememberCoroutineScope()
     val navigation = remember { GridNavigationSession() }
@@ -218,11 +218,11 @@ private class GridNavigationSession {
         val columns = if (maxWidth < 780.dp) 4 else 6
         val side = if (compact) 30.dp else 44.dp
         Column(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxWidth().height(if (compact) 112.dp else 144.dp).padding(start = side + 4.dp, top = if (compact) 13.dp else 31.dp)) {
-                Text("开 源 应 用", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold)
-                Text("好应用，自由探索。", color = Ink, fontSize = if (compact) 27.sp else 30.sp, lineHeight = 39.sp,
+            if (showHeading) Column(Modifier.fillMaxWidth().height(if (compact) 112.dp else 144.dp).padding(start = side + 4.dp, top = if (compact) 13.dp else 31.dp)) {
+                Text(eyebrow, color = Muted, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold)
+                Text(title, color = Ink, fontSize = if (compact) 27.sp else 30.sp, lineHeight = 39.sp,
                     letterSpacing = (-1).sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
-                Text("让开源的精彩，来到你的大屏。", color = Muted, fontSize = 14.sp, lineHeight = 21.sp, modifier = Modifier.padding(top = 5.dp))
+                Text(subtitle, color = Muted, fontSize = 14.sp, lineHeight = 21.sp, modifier = Modifier.padding(top = 5.dp))
             }
             if (apps.isEmpty()) {
                 Column(Modifier.padding(horizontal = side, vertical = 30.dp)) {
@@ -264,7 +264,7 @@ private class GridNavigationSession {
                             if (index % columns == 0) left = FocusRequester.Cancel
                             if (index % columns == columns - 1 || index == apps.lastIndex) right = FocusRequester.Cancel
                             if (index + columns > apps.lastIndex) down = FocusRequester.Cancel
-                        }, onFocus = { memory.lastId = app.id }, onClick = { onSelect(app) })
+                        }, onFocus = { memory.lastId = app.id }, onClick = { onSelect(app) }, caption = badges[app.id])
                 }
             }
         }
@@ -274,7 +274,7 @@ private class GridNavigationSession {
 private val HomeCardCornerRadius = 22.dp
 private val HomeCardShape = RoundedCornerShape(HomeCardCornerRadius)
 
-@Composable private fun HomeAppTile(app: StoreApp, modifier: Modifier, onFocus: () -> Unit, onClick: () -> Unit) {
+@Composable private fun HomeAppTile(app: StoreApp, modifier: Modifier, onFocus: () -> Unit, onClick: () -> Unit, caption: String? = null) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val pressed by interaction.collectIsPressedAsState()
@@ -342,5 +342,6 @@ private val HomeCardShape = RoundedCornerShape(HomeCardCornerRadius)
         Text(app.name, color = nameColor, fontSize = 13.sp, lineHeight = 19.sp, fontWeight = FontWeight.Medium,
             textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth().padding(top = 11.dp, bottom = 5.dp))
+        if (caption != null) Text(caption, color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
     }
 }

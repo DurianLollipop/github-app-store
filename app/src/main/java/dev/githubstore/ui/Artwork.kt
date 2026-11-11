@@ -25,6 +25,9 @@ import dev.githubstore.domain.StoreApp
 internal fun isCenteredBannerArtwork(url: String): Boolean =
     url.substringBefore('?').endsWith("/banner-logo-solid.svg")
 
+internal fun isAuthorAvatar(url: String) = url.startsWith("https://avatars.githubusercontent.com/") ||
+    Regex("^https://github\\.com/[^/]+\\.png(?:[?].*)?$").matches(url)
+
 @Composable fun AppMark(app: StoreApp, modifier: Modifier = Modifier, size: Int = 58,
                        fallbackShading: Boolean = true, shape: Shape? = RoundedCornerShape((size * .24f).dp),
                        symbolShadow: Shadow? = null) {
@@ -45,14 +48,14 @@ internal fun isCenteredBannerArtwork(url: String): Boolean =
     // the explicit letter fallback, never behind a successfully loaded logo.
     // A parent material can own the silhouette, avoiding two independently
     // antialiased masks around the artwork and its lighting overlay.
-    Box(modifier.size(size.dp).testTag("app-icon-${app.id}").semantics { stateDescription = if (loaded) "在线图标" else "占位图标" }.then(if (shape != null) Modifier.clip(shape) else Modifier)
+    Box(modifier.size(size.dp).testTag("app-icon-${app.id}").semantics { stateDescription = if (loaded) { if (isAuthorAvatar(source)) "作者头像，非项目图标" else "在线图标" } else "占位图标" }.then(if (shape != null) Modifier.clip(shape) else Modifier)
         .background(if (loaded) Color.White else Color(app.color.toInt())), contentAlignment = Alignment.Center) {
         if (!loaded && !fallbackShading) Box(Modifier.matchParentSize().background(tileGradient))
         if (!loaded && fallbackShading) Box(Modifier.matchParentSize().background(Brush.linearGradient(
             listOf(Color.White.copy(.18f), Color.Transparent, Color.Black.copy(.10f)))))
         if (!loaded) Text(app.symbol, color = Color.White, fontSize = (size * .46f).sp, fontWeight = FontWeight.Bold,
             style = TextStyle(shadow = symbolShadow))
-        if (source.isNotEmpty()) AsyncImage(source, "${app.name} 图标",
+        if (source.isNotEmpty()) AsyncImage(source, if (isAuthorAvatar(source)) "${app.name} 作者头像（非项目图标）" else "${app.name} 图标",
             Modifier.fillMaxSize().padding(if (bannerArtwork) 0.dp else (size * .12f).dp).alpha(if (loaded) 1f else 0f),
             // This README asset is a centered symbol in a 5:1 transparent banner.
             // Crop its empty sides; fit other logos without distorting/cutting them.

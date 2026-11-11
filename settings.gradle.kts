@@ -6,4 +6,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "OrbitStore"
-include(":app")
+include(":app", ":test-fixture")

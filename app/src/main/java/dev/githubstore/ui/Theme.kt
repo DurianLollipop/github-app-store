@@ -37,9 +37,9 @@ val Accent = Color(0xFF0066CC)
 val Good = Color(0xFF24804A)
 val Error = Color(0xFFB42332)
 
-@Composable fun OrbitTheme(content: @Composable () -> Unit) {
+@Composable fun OrbitTheme(forceReduced: Boolean = false, content: @Composable () -> Unit) {
     val reducedMotion = rememberSystemReducedMotion()
-    CompositionLocalProvider(LocalReducedMotion provides reducedMotion) {
+    CompositionLocalProvider(LocalReducedMotion provides (reducedMotion || forceReduced)) {
         MaterialTheme(colorScheme = lightColorScheme(primary = Accent, onPrimary = Color.White, background = Backdrop,
             surface = Panel, surfaceVariant = Control, onSurface = Ink, onSurfaceVariant = Muted,
             onBackground = Ink, outline = Color(0xFFC7C7CC), error = Error),

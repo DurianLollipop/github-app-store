@@ -20,7 +20,7 @@ fi
 "$ADB" -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk
 "$ADB" -s emulator-5554 install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 "$ADB" -s emulator-5554 shell pm clear dev.githubstore
-"$ADB" -s emulator-5554 shell am instrument -w -e class "${1:-dev.githubstore.StoreNavigationTest,dev.githubstore.DetailReadingTest,dev.githubstore.HomeGridTest,dev.githubstore.DownloadResumeStateTest,dev.githubstore.VersionSelectionTest}" \
+"$ADB" -s emulator-5554 shell am instrument -w -e class "${1:-dev.githubstore.StoreNavigationTest,dev.githubstore.DetailReadingTest,dev.githubstore.HomeGridTest,dev.githubstore.DownloadResumeStateTest,dev.githubstore.VersionSelectionTest,dev.githubstore.ToolWorkflowTest}" \
   dev.githubstore.test/androidx.test.runner.AndroidJUnitRunner > /tmp/github-store-ui-tests.log
 python3 - <<'PY'
 from pathlib import Path

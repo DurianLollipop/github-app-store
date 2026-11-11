@@ -11,6 +11,10 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.githubstore.domain.StoreApp
+import dev.githubstore.data.*
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.UiDevice
+import java.io.File
 import dev.githubstore.ui.*
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -26,6 +30,43 @@ class HomeGridTest {
         StoreApp("grid-$it", "应用 $it", "example/app", "example.app$it", "工具", "", "", "MIT", 0xFF168A7F, "A")
     }
 
+    @Test fun compactDiscoveryShowsTwoRowsAndFilterRestoresRemoteFocus() {
+        rule.setContent {
+            OrbitTheme {
+                val scroll = rememberLazyGridState()
+                val memory = remember { HomeFocusMemory() }
+                val navigation = remember { Destination.entries.associateWith { FocusRequester() } }
+                var sort by remember { mutableStateOf(HotSort.GROWTH) }
+                var period by remember { mutableStateOf(HotPeriod.WEEK) }
+                SilkSceneHost(Modifier.fillMaxSize(), animate = false) {
+                    Column(Modifier.fillMaxSize()) {
+                        FloatingNavigation(Destination.Discover, 0, navigation, { true }, {})
+                        DiscoveryPage(DiscoverySnapshot(apps.map { DiscoveryItem(it, 100, source = "测试夹具", window = "本周") }, 1),
+                            false, DiscoveryMode.GLOBAL, sort, period, scroll, memory, navigation.getValue(Destination.Discover), 0,
+                            onMode = { _, s, p -> sort = s; period = p }, onRefresh = {}, onExternal = {}, onSelect = {})
+                    }
+                }
+            }
+        }
+        val screen = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        val grid = rule.onNodeWithTag("home-grid").fetchSemanticsNode().boundsInRoot
+        assertTrue("网格应从屏幕前40%以内开始", grid.top < screen.height * .4f)
+        val secondRow = rule.onNodeWithTag("app-tile-grid-11").fetchSemanticsNode().boundsInRoot
+        assertTrue("首屏应完整容纳两行六列项目", secondRow.bottom <= grid.bottom)
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).takeScreenshot(File(context.getExternalFilesDir(null), "compact-home-fixture.png"))
+        rule.onNodeWithTag("hot-filter").performClick()
+        rule.onNodeWithTag("hot-sort-GROWTH").assertIsFocused()
+        rule.onNodeWithTag("hot-period-MONTH").performClick()
+        rule.onNodeWithTag("hot-sort-TOTAL").performClick()
+        rule.onNodeWithTag("hot-filter-done").performClick()
+        rule.onNodeWithTag("hot-filter").assertIsFocused()
+        rule.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+        rule.onNodeWithTag("app-tile-grid-0").assertIsFocused()
+        rule.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+        rule.onNodeWithTag("app-tile-grid-6").assertIsFocused().assertIsDisplayed()
+    }
+
     private fun showGrid() {
         rule.setContent {
             OrbitTheme {
@@ -35,7 +76,7 @@ class HomeGridTest {
                 var detail by remember { mutableStateOf(false) }
                 Column(Modifier.fillMaxSize()) {
                     FloatingNavigation(Destination.Discover, 0, navigation, { true }, {})
-                    if (detail) TvButton("返回网格", { detail = false })
+                    if (detail) TvButton("返回网格", { memory.lastId = apps.first().id; detail = false })
                     else HomePage(apps, scroll, memory, navigation.getValue(Destination.Discover), true) { detail = true }
                 }
             }
@@ -59,14 +100,12 @@ class HomeGridTest {
         assertTrue("焦点图标应完整处于滚动视口内", focused.top >= viewport.top && focused.bottom <= viewport.bottom)
     }
 
-    @Test fun returningToGridRestoresOffscreenRowAndFocusedApplication() {
+    @Test fun returningToGridResetsToFirstVisibleApplication() {
         showGrid()
         repeat(5) { rule.onRoot().performKeyInput { pressKey(Key.DirectionDown) } }
         rule.onNodeWithTag("app-tile-grid-30").assertIsFocused().assertIsDisplayed()
         rule.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
         rule.onNodeWithText("返回网格").performClick()
-        rule.onNodeWithTag("app-tile-grid-30").assertIsFocused().assertIsDisplayed()
-        rule.onRoot().performKeyInput { pressKey(Key.DirectionUp) }
-        rule.onNodeWithTag("app-tile-grid-24").assertIsFocused().assertIsDisplayed()
+        rule.onNodeWithTag("app-tile-grid-0").assertIsFocused().assertIsDisplayed()
     }
 }

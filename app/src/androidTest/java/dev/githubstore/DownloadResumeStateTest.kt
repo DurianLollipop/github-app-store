@@ -38,6 +38,17 @@ class DownloadResumeStateTest {
         assertEquals(128L, File(DownloadEngine.checkpointDir(restored.partial(task.id)), "0.chunk").length())
         assertEquals(32L, File(DownloadEngine.checkpointDir(restored.partial(task.id)), "1.chunk").length())
     }
+    @Test fun replacedAssetWithSameUrlDoesNotReuseOldReadyTask() = isolated { repository, _ ->
+        val task = enqueue(repository)
+        repository.update(task.id) { it.copy(status = TaskStatus.READY) }
+        val app = StoreApp(task.appId, task.appName, task.repository, task.packageName, "", "", "", "", 0xFF000000, "T")
+        val same = repository.enqueue(app, AppRelease(1, "v1", "", "", "", false, "", listOf(task.asset)), task.asset)
+        assertEquals(task.id, same.id)
+        val replaced = task.asset.copy(size = 2048, sha256 = "b".repeat(64), updatedAt = "2026-11-11")
+        val fresh = repository.enqueue(app, AppRelease(1, "v1", "", "", "", false, "", listOf(replaced)), replaced)
+        assertNotEquals(task.id, fresh.id)
+        assertEquals(TaskStatus.QUEUED, fresh.status)
+    }
     @Test fun clearingCachePreservesActiveSegmentDirectoryButRemovesCancelledSegments() = isolated { repository, _ ->
         val task = enqueue(repository)
         val chunk = File(DownloadEngine.checkpointDir(repository.partial(task.id)).apply { mkdirs() }, "0.chunk")

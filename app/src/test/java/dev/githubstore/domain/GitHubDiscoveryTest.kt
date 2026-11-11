@@ -42,7 +42,7 @@ class GitHubDiscoveryTest {
     }
     @Test fun `rate limit errors are actionable and never become local search results`() = runBlocking {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse().setResponseCode(403)); server.start()
+            server.enqueue(MockResponse().setResponseCode(403).setHeader("X-RateLimit-Remaining", "0").setBody("{\"message\":\"API rate limit exceeded\"}")); server.start()
             val error = runCatching { GitHubDiscovery(OkHttpClient(), server.url("/")).search("outside") }.exceptionOrNull()
             assertTrue(error!!.message!!.contains("请求过于频繁"))
         }
@@ -57,7 +57,8 @@ class GitHubDiscoveryTest {
 
                 |![Screenshot](screens/main.png)
                 |""".trimMargin()
-            server.enqueue(MockResponse().setBody(JSONArray(listOf(release)).toString()))
+            server.enqueue(MockResponse().setBody(repo().toString()))
+            server.enqueue(MockResponse().setBody(release.toString()))
             server.enqueue(MockResponse().setBody(JSONObject().put("encoding", "base64").put("content", Base64.getEncoder().encodeToString(text.toByteArray()))
                 .put("html_url", "https://github.com/author/OutsideCatalog/blob/main/README.md").put("path", "README.md").toString()))
             server.start()
@@ -71,7 +72,7 @@ class GitHubDiscoveryTest {
     }
     @Test fun `missing readme preserves real release data`() = runBlocking {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse().setBody("[]")); server.enqueue(MockResponse().setResponseCode(404)); server.start()
+            server.enqueue(MockResponse().setBody(repo().toString())); server.enqueue(MockResponse().setResponseCode(404)); server.enqueue(MockResponse().setBody("[]")); server.enqueue(MockResponse().setResponseCode(404)); server.start()
             val app = GitHubDiscovery.repository(repo())
             val result = GitHubDiscovery(OkHttpClient(), server.url("/")).details(app)
             assertEquals(app.description, result.description); assertEquals(app.iconUrl, result.iconUrl)

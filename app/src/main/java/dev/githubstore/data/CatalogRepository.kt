@@ -131,7 +131,7 @@ class CatalogRepository(context: Context, private val client: OkHttpClient) {
             prerelease = j.optBoolean("prerelease"), url = j.getString("html_url"),
             assets = j.optJSONArray("assets")?.objects().orEmpty().filter { it.getString("name").endsWith(".apk", true) }.map { asset ->
                 ReleaseAsset(asset.getLong("id"), asset.getString("name"), asset.getString("browser_download_url"), asset.getLong("size"),
-                    asset.optString("digest").removePrefix("sha256:").takeIf { AssetPolicy.validDigest(it) })
+                    asset.optString("digest").removePrefix("sha256:").takeIf { AssetPolicy.validDigest(it) }, updatedAt = asset.optString("updated_at"))
             },
         )
     }

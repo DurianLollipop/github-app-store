@@ -38,6 +38,7 @@ import coil.compose.AsyncImage
 import dev.githubstore.BuildConfig
 import dev.githubstore.StoreViewModel
 import dev.githubstore.domain.*
+import dev.githubstore.data.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -53,20 +54,44 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
                          onDownloadPermission: () -> Unit, openDownloads: Boolean,
                          onExternal: (String) -> Unit, onUninstall: (String) -> Unit) {
     val recommendedApps by model.apps.collectAsStateWithLifecycle()
+    val home by model.home.collectAsStateWithLifecycle()
+    val homeBusy by model.homeBusy.collectAsStateWithLifecycle()
+    val homeSettings by model.discoverySettings.collectAsStateWithLifecycle()
+    val records by model.library.collectAsStateWithLifecycle()
+    var agreementOpen by remember { mutableStateOf(false) }
+    var noticesOpen by remember { mutableStateOf(false) }
+    var agreementReadOnly by remember { mutableStateOf(false) }
+    var pendingDownload by remember { mutableStateOf<Triple<StoreApp, AppRelease, ReleaseAsset>?>(null) }
+    var sourceTask by remember { mutableStateOf<DownloadTask?>(null) }
+    var backToTop by rememberSaveable { mutableIntStateOf(0) }
+    val appsInHome = home.items.map { item ->
+        val known = records.firstOrNull { it.app.id == item.app.id }?.app
+        if (known != null && known.iconUrl.isNotBlank() && known.iconUrl != item.app.iconUrl) item.app.copy(iconUrl = known.iconUrl) else item.app
+    }.filter { app -> records.none { it.app.id == app.id && it.hidden } }
+    fun requestInstall(task: DownloadTask) {
+        if (!model.agreement.accepted) { agreementReadOnly = false; agreementOpen = true }
+        else if (!task.sourceConfirmed || task.inspected == null) sourceTask = task else onInstall(task)
+    }
     val discoveredApps by model.discovered.collectAsStateWithLifecycle()
     val searchState by model.search.collectAsStateWithLifecycle()
-    val catalogApps = recommendedApps + discoveredApps.filterNot { found -> recommendedApps.any { it.id == found.id } }
-    val apps = recommendedApps.filter { it.id != "orbit-store" }
+    val catalogApps = (recommendedApps + discoveredApps + appsInHome).distinctBy { it.id }
+    val apps = appsInHome
+    val categoryApps = (if (homeSettings.first == DiscoveryMode.GLOBAL) records.map { it.app } else appsInHome).filter { DiscoveryRules.eligible(it) }
     val tasks by model.tasks.collectAsStateWithLifecycle()
     val installed by model.installed.collectAsStateWithLifecycle()
     val busy by model.busy.collectAsStateWithLifecycle()
     val message by model.message.collectAsStateWithLifecycle()
     val ignored by model.ignored.collectAsStateWithLifecycle()
+    val reduced by model.reducedMotion.collectAsStateWithLifecycle()
+    val automaticChecks by model.automaticChecks.collectAsStateWithLifecycle()
     var destination by rememberSaveable { mutableStateOf(if (openDownloads) Destination.Downloads else Destination.Discover) }
     var selectedApp by rememberSaveable { mutableStateOf<String?>(null) }
     var lastAppId by rememberSaveable { mutableStateOf<String?>(null) }
     val cardFocus = remember { mutableMapOf<String, FocusRequester>() }
-    fun select(app: StoreApp) { model.prepareDetail(app); lastAppId = app.id; selectedApp = app.id }
+    fun select(app: StoreApp) { model.pauseDiscovery(); model.prepareDetail(app); lastAppId = app.id; selectedApp = app.id }
+    LaunchedEffect(searchState.openRepository?.id) {
+        searchState.openRepository?.let { app -> if (destination == Destination.Search) select(app); model.consumeRepositoryOpen() }
+    }
     val homeScroll = rememberLazyGridState()
     val homeFocus = remember { HomeFocusMemory() }
     val navigationFocus = remember { Destination.entries.associateWith { FocusRequester() } }
@@ -76,19 +101,21 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
     var lastMessage by remember { mutableStateOf("") }
     if (message != null) SideEffect { lastMessage = message!! }
     LaunchedEffect(Unit) { withFrameNanos { }; navigationFocus.getValue(destination).requestFocus() }
-    LaunchedEffect(selectedApp) {
-        if (selectedApp == null && lastAppId != null && destination != Destination.Discover) {
-            withFrameNanos { }
-            runCatching { cardFocus[lastAppId]?.requestFocus() }
+    fun backFromDetail() {
+        homeFocus.lastId = apps.firstOrNull()?.id
+        scope.launch {
+            homeScroll.scrollToItem(0)
+            backToTop++
+            selectedApp = null
         }
     }
     BackHandler(selectedApp != null || destination != Destination.Discover) {
-        if (selectedApp != null) selectedApp = null else {
+        if (selectedApp != null) backFromDetail() else {
             destination = Destination.Discover
             navigationFocus.getValue(Destination.Discover).requestFocus()
         }
     }
-    OrbitTheme {
+    OrbitTheme(forceReduced = reduced) {
         SilkSceneHost(Modifier.fillMaxSize(), animate = destination == Destination.Discover && selectedApp == null) {
             Column(Modifier.fillMaxSize()) {
                 FloatingNavigation(destination, tasks.count { it.active }, navigationFocus,
@@ -111,31 +138,65 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
                             else -> false
                         }
                     },
-                    onSelect = { destination = it; selectedApp = null })
+                    onSelect = { model.pauseDiscovery(); destination = it; selectedApp = null })
                 Box(Modifier.weight(1f).fillMaxWidth().revealOnLaunch()) {
                     PageTransition("${destination.name}:${selectedApp.orEmpty()}", selectedApp != null) { route ->
                         pageState.SaveableStateProvider(route) {
                             val shownDestination = Destination.valueOf(route.substringBefore(':'))
                             val app = catalogApps.firstOrNull { it.id == route.substringAfter(':') }
                             if (app != null) AppDetail(app, installed[app.packageName], busy.contains(app.id),
-                                onBack = { selectedApp = null }, onRefresh = { model.prepareDetail(app, true) },
-                                onDownload = { release, asset -> onDownloadPermission(); model.download(app, release, asset); selectedApp = null; destination = Destination.Downloads },
+                                onBack = ::backFromDetail, onRefresh = { model.prepareDetail(app, true) },
+                                onDownload = { release, asset ->
+                                    if (!model.agreement.accepted) { pendingDownload = Triple(app, release, asset); agreementReadOnly = false; agreementOpen = true }
+                                    else { onDownloadPermission(); model.download(app, release, asset); selectedApp = null; destination = Destination.Downloads }
+                                },
                                 onOpen = { model.open(app) }, onExternal = onExternal,
-                                onUninstall = { onUninstall(app.packageName) })
+                                onUninstall = { onUninstall(app.packageName) },
+                                readmes = model.readmes, record = records.firstOrNull { it.app.id == app.id },
+                                onFavorite = { model.favorite(app) }, onSubscribe = { model.subscribe(app) }, onAssociate = { model.associate(app) }, onHistory = { model.loadHistory(app) })
                             else when (shownDestination) {
-                                Destination.Discover -> HomePage(apps, homeScroll, homeFocus,
-                                    navigationFocus.getValue(Destination.Discover), restoreFocus = lastAppId != null,
-                                    onSelect = { homeFocus.lastId = it.id; select(it) })
-                                Destination.Search -> GitHubSearchPage(searchState.copy(results = searchState.results.map { found -> catalogApps.firstOrNull { it.id == found.id } ?: found }), navigationFocus.getValue(Destination.Search), browseEntry.getValue(Destination.Search), cardFocus, model::searchQuery, model::submitSearch, model::moreSearchResults, ::select)
-                                Destination.Categories -> BrowsePage(apps, false, cardFocus, navigationFocus.getValue(Destination.Categories), browseEntry.getValue(Destination.Categories), ::select)
-                                Destination.Downloads -> DownloadsPage(tasks, catalogApps, onInstall, model::cancel, model::retry, { selectedApp = it })
-                                Destination.Library -> LibraryPage(apps, installed, ignored, busy.isNotEmpty(), model::refreshAll,
-                                    onSelect = { selectedApp = it.id }, onOpen = model::open, onIgnore = model::ignore)
-                                Destination.Settings -> SettingsPage(apps, model::refreshAll, model::clearCache, onExternal,
+                                Destination.Discover -> DiscoveryPage(home.copy(items = home.items.filter { item -> apps.any { it.id == item.app.id } }.map { item -> item.copy(app = apps.first { it.id == item.app.id }) }), homeBusy,
+                                    homeSettings.first, homeSettings.second, homeSettings.third, homeScroll, homeFocus, navigationFocus.getValue(Destination.Discover), backToTop,
+                                    model::homeMode, { model.refreshHome(true) }, onExternal, model::enrichVisibleHome, ::select)
+                                Destination.Search -> GitHubSearchPage(searchState.copy(results = searchState.results.map { found -> catalogApps.firstOrNull { it.id == found.id } ?: found }), navigationFocus.getValue(Destination.Search), browseEntry.getValue(Destination.Search), cardFocus, model::searchQuery, model::submitSearch, model::moreSearchResults, ::select, backToTop)
+                                Destination.Categories -> BrowsePage(categoryApps, false, cardFocus, navigationFocus.getValue(Destination.Categories), browseEntry.getValue(Destination.Categories), ::select, backToTop)
+                                Destination.Downloads -> DownloadsPage(tasks, catalogApps, ::requestInstall, model::cancel, model::retry, { selectedApp = it })
+                                Destination.Library -> UserLibraryPage(records, installed, busy.isNotEmpty(), model::refreshAll, ::select, model::open,
+                                    model::favorite, model::subscribe, model::installChecks, model::prerelease, model::unlink, model::hide, model::bindingChannel, backToTop, ignored, model::ignore)
+                                Destination.Settings -> SettingsPage(model, catalogApps, model::refreshAll, model::clearCache, onExternal,
+                                    onAgreement = { agreementReadOnly = true; agreementOpen = true }, onNotices = { noticesOpen = true }, onReset = model::resetPreferences,
+                                    reduced = reduced, automaticChecks = automaticChecks, onMotion = model::toggleMotion, onChecks = model::toggleChecks, onClearData = model::clearUserData,
                                     onSelfUpdate = { selectedApp = "orbit-store"; model.refresh("orbit-store", true) })
                             }
                         }
                     }
+                }
+            }
+        }
+        OrbitDialog(agreementOpen, { agreementOpen = false; pendingDownload = null }, width = 850) {
+            AgreementPanel(agreementReadOnly, onAccept = {
+                model.agreement.accept(); agreementOpen = false
+                pendingDownload?.let { (app, release, asset) -> onDownloadPermission(); model.download(app, release, asset); selectedApp = null; destination = Destination.Downloads }
+                pendingDownload = null
+            }, onDecline = { agreementOpen = false; pendingDownload = null })
+        }
+        OrbitDialog(noticesOpen, { noticesOpen = false }, width = 850) {
+            AgreementPanel(true, {}, { noticesOpen = false }, "third-party-notices.txt", "阅读组件开源许可")
+        }
+        OrbitDialog(sourceTask != null, { sourceTask = null }, width = 750) {
+            val task = sourceTask
+            Text("确认安装包来源", color = Ink, fontSize = 22.sp)
+            if (task != null) {
+                Text("仓库：${task.repository}\n版本：${task.releaseTag}\n包名：${task.inspected?.packageName ?: "待检查"}\n内部版本：${task.inspected?.versionCode ?: "未知"}", color = Ink, fontSize = 13.sp)
+                Text("签名 SHA-256：${task.inspected?.certificates?.joinToString() ?: "待检查"}", color = Muted, fontSize = 11.sp)
+                Text(if (task.inspected == null) "旧任务需要重新检查，尚不能确认安装。" else if (task.asset.sha256 == null) "上游未提供摘要；已记录本机文件摘要。技术检查不代表安全认证。" else "上游摘要比对通过；技术检查不代表安全认证。", color = Muted, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    TvButton("取消", { sourceTask = null })
+                    TvButton("确认来源并继续", {
+                        if (task.inspected == null) { model.retry(task); model.tell("旧任务需要重新检查安装包，请稍后再次安装") }
+                        else { model.confirmSource(task); onInstall(task.copy(sourceConfirmed = true)) }
+                        sourceTask = null
+                    }, Modifier.testTag("confirm-package-source"), primary = true)
                 }
             }
         }
@@ -167,17 +228,25 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
     }
 }
 
-@Composable private fun BrowsePage(apps: List<StoreApp>, search: Boolean, focus: MutableMap<String, FocusRequester>, navigationFocus: FocusRequester, entryFocus: FocusRequester, onSelect: (StoreApp) -> Unit) {
+@Composable private fun BrowsePage(apps: List<StoreApp>, search: Boolean, focus: MutableMap<String, FocusRequester>, navigationFocus: FocusRequester, entryFocus: FocusRequester, onSelect: (StoreApp) -> Unit, returnToken: Int = 0) {
     var query by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf("全部") }
     val categories = listOf("全部") + apps.map { it.category }.distinct()
     val filtered = apps.filter { (category == "全部" || it.category == category) &&
         listOf(it.name, it.tagline, it.description, it.repository).any { field -> field.contains(query, true) } }
     val scope = rememberCoroutineScope()
-    val grid = rememberLazyGridState()
+    val grid = remember(returnToken) { LazyGridState() }
     val categoryFocus = remember { mutableMapOf("全部" to entryFocus) }
     val inputFocus = remember { FocusRequester() }
     var lastCategory by rememberSaveable { mutableStateOf("全部") }
+    val pageActive = LocalPageActive.current
+    LaunchedEffect(returnToken, pageActive) {
+        if (pageActive && returnToken > 0) {
+            grid.scrollToItem(0); withFrameNanos { }
+            val first = filtered.firstOrNull()
+            if (first != null) runCatching { focus[first.id]?.requestFocus() } else runCatching { entryFocus.requestFocus() }
+        }
+    }
     fun categoryRequester() = categoryFocus.getOrPut(lastCategory) { FocusRequester() }
     fun enterResults(): Boolean {
         val first = filtered.firstOrNull() ?: return true
@@ -191,7 +260,7 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
         return true
     }
     Column(Modifier.fillMaxSize().padding(34.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        SectionTitle(if (search) "找到你的下一款好应用" else "每一种热爱，都有选择", "浏览目录中的 ${apps.size} 款开源应用")
+        SectionTitle(if (search) "找到你的下一款好应用" else "每一种热爱，都有选择", "已发现 ${apps.size} 款应用 · 自动分类")
         if (search) OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().focusRequester(inputFocus)
             .onPreviewKeyEvent {
                 if (it.type != KeyEventType.KeyDown) false else when (it.key) {
@@ -233,7 +302,13 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
 
 @Composable internal fun AppDetail(app: StoreApp, installed: InstalledApp?, busy: Boolean, onBack: () -> Unit,
                                  onRefresh: () -> Unit, onDownload: (AppRelease, ReleaseAsset) -> Unit,
-                                 onOpen: () -> Unit, onExternal: (String) -> Unit, onUninstall: () -> Unit) {
+                                 onOpen: () -> Unit, onExternal: (String) -> Unit, onUninstall: () -> Unit,
+                                 readmes: dev.githubstore.readme.ReadmeRepository? = null, record: UserRepository? = null,
+                                 onFavorite: () -> Unit = {}, onSubscribe: () -> Unit = {}, onAssociate: () -> Unit = {}, onHistory: () -> Unit = {}) {
+    val readmeBack = remember { ReaderBackController() }
+    var readmeOpen by remember { mutableStateOf(false) }
+    val readmeFocus = remember { FocusRequester() }
+    var restoreReadme by remember { mutableStateOf(false) }
     var selectedTag by rememberSaveable(app.id) { mutableStateOf<String?>(null) }
     var image by remember { mutableStateOf<String?>(null) }
     var previewOpen by remember { mutableStateOf(false) }
@@ -279,19 +354,20 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
                 AppMark(app, size = 95)
                 Column(Modifier.weight(1f)) {
                     Eyebrow("GITHUB · ${app.license}")
+                    if (isAuthorAvatar(app.iconUrl)) Text("作者头像 · 尚未识别到项目图标", color = Muted, fontSize = 9.sp)
                     Text(app.name, color = Ink, fontSize = 32.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-.7).sp, modifier = Modifier.padding(top = 5.dp))
                     Text(app.tagline, color = Muted, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
                     Row(Modifier.padding(top = 19.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         val primaryLabel = when {
                             busy -> "正在检查…"
-                            release != null && asset != null && app.certificateSha256.isNotEmpty() -> "下载 · ${formatBytes(asset.size)}"
+                            release != null && asset != null -> "下载 · ${formatBytes(asset.size)}"
                             release != null && candidates.isNotEmpty() && asset == null -> "选择安装包"
                             release != null -> "查看官方发布"
                             else -> "获取发布版本"
                         }
                         TvButton(primaryLabel, {
                             if (!busy) when {
-                                release != null && asset != null && app.certificateSha256.isNotEmpty() -> onDownload(release, asset)
+                                release != null && asset != null -> onDownload(release, asset)
                                 release != null && candidates.isNotEmpty() && asset == null -> assetsOpen = true
                                 release != null -> onExternal(release.url)
                                 else -> onRefresh()
@@ -302,7 +378,7 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
                     }
                     if (release != null) Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Box {
-                            TvButton("${if (selectedTag == null) "最新" else "版本"}：${release.tag.take(22)} ▾", { versionsOpen = true },
+                            TvButton("${if (selectedTag == null) "最新" else "版本"}：${release.tag.take(22)} ▾", { onHistory(); versionsOpen = true },
                                 Modifier.focusRequester(versionFocus).testTag("version-picker"))
                             DropdownMenu(versionsOpen, { versionsOpen = false }, Modifier.heightIn(max = 240.dp).testTag("version-menu")) {
                                 DropdownMenuItem(text = { Text("最新稳定版") }, onClick = { selectedTag = null; versionsOpen = false },
@@ -310,6 +386,7 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
                                 LaunchedEffect(versionsOpen) {
                                     if (versionsOpen) { withFrameNanos { }; menuLatestFocus.requestFocus() }
                                 }
+                                if (busy) DropdownMenuItem(text = { Text("正在获取历史版本…", fontSize = 12.sp) }, onClick = {}, enabled = false)
                                 app.releases.forEach { version ->
                                     DropdownMenuItem(text = { Text(version.tag + if (version.prerelease) " · 测试版" else " · 稳定版", fontSize = 13.sp) },
                                         onClick = { selectedTag = version.tag; versionsOpen = false },
@@ -347,9 +424,14 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
                 if (app.checkedAt > 0) Text("· 检查于 ${date(app.checkedAt)}", color = Muted, fontSize = 10.sp)
             }
         }
+        item { Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            TvButton(if (record?.favorite == true) "取消收藏" else "收藏", onFavorite, Modifier.testTag("detail-favorite"))
+            TvButton(if (record?.subscribed == true) "取消订阅" else "订阅版本", onSubscribe, Modifier.testTag("detail-subscribe"))
+            TvButton("关联已安装应用", onAssociate)
+        } }
         item { Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
-            SectionTitle("关于应用", "使用上下键逐段浏览", trailing = if (app.readmeUrl.isBlank()) null else {
-                { TvButton("查看 README", { onExternal(app.readmeUrl) }) }
+            SectionTitle("关于应用", "使用上下键逐段浏览", trailing = {
+                TvButton("查看 README", { if (readmes != null) readmeOpen = true else onExternal(app.readmeUrl.ifBlank { app.sourceUrl }) }, Modifier.focusRequester(readmeFocus).testTag("open-readme"))
             })
             ReadingText(app.description)
         } }
@@ -380,6 +462,9 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
             } }
         }
         if (installed != null) item { TvButton("在系统中卸载", onUninstall) }
+    }
+    OrbitDialog(readmeOpen, { readmeBack.back?.invoke() ?: run { readmeOpen = false } }, width = 900, onClosed = { if (restoreReadme) { runCatching { readmeFocus.requestFocus() }; restoreReadme = false } }) {
+        if (readmes != null) ReadmeReader(app, readmes, { restoreReadme = true; readmeOpen = false }, onExternal, readmeBack)
     }
     OrbitDialog(previewOpen, { previewOpen = false }, width = 800,
         onClosed = { if (image != null) restoreImageFocus = true }) {
@@ -432,52 +517,38 @@ internal enum class Destination(val title: String, val icon: ImageVector) {
     }
 }
 
-@Composable private fun LibraryPage(apps: List<StoreApp>, installed: Map<String, InstalledApp>, ignored: Set<String>, busy: Boolean,
-                                  onRefresh: () -> Unit, onSelect: (StoreApp) -> Unit, onOpen: (StoreApp) -> Unit,
-                                  onIgnore: (StoreApp, ReleaseAsset) -> Unit) {
-    val localApps = apps.filter { it.packageName in installed }
-    LazyColumn(contentPadding = PaddingValues(34.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        item { SectionTitle("我的应用", "管理目录中可识别的应用与更新", trailing = { TvButton(if (busy) "正在检查…" else "检查更新", onRefresh) }) }
-        if (localApps.isEmpty()) item { EmptyState(Icons.Outlined.Widgets, "让大屏，有更多可能", "尚未检测到目录内的已安装应用，先去发现一款吧") }
-        items(localApps, key = { it.id }) { app ->
-            val current = installed.getValue(app.packageName)
-            val latest = app.releases.firstOrNull { !it.prerelease }
-            val asset = latest?.let { AssetPolicy.recommended(it, Build.SUPPORTED_ABIS.toList(), Build.VERSION.SDK_INT) }
-            val isIgnored = asset?.let { "${app.id}:${it.versionCode ?: it.id}" in ignored } ?: false
-            val upgrade = asset?.let { AssetPolicy.upgradeAvailable(current, it, app.certificateSha256) } ?: false
-            Column(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(19.dp)).padding(20.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    AppMark(app, size = 48)
-                    Column(Modifier.weight(1f)) {
-                        Text(app.name, color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Medium)
-                        Text("已安装 ${current.versionName} · ${current.versionCode}", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
-                    }
-                    Text(when { upgrade && isIgnored -> "已忽略此更新"; upgrade -> "可更新至 ${latest?.tag}"; asset?.versionCode == null && latest != null -> "上游版本 ${latest.tag}，待核对"; else -> "已检查的版本无更新" }, color = if (upgrade && !isIgnored) Good else Muted, fontSize = 11.sp)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    TvButton(if (upgrade && !isIgnored) "查看更新" else "版本与详情", { onSelect(app) }, primary = upgrade && !isIgnored)
-                    TvButton("打开", { onOpen(app) })
-                    if (upgrade && asset != null) TvButton(if (isIgnored) "恢复提醒" else "忽略此版本", { onIgnore(app, asset) })
-                }
-            }
-        }
-        item { Text("应用识别受系统包可见性限制，仅显示当前目录中的应用。检查失败时请重试。", color = Muted, fontSize = 10.sp) }
+@Composable private fun SettingsPage(model: StoreViewModel, apps: List<StoreApp>, onRefresh: () -> Unit, onClear: () -> Unit, onExternal: (String) -> Unit, onAgreement: () -> Unit, onNotices: () -> Unit, onReset: () -> Unit, reduced: Boolean, automaticChecks: Boolean,
+                                    onMotion: () -> Unit, onChecks: () -> Unit, onClearData: () -> Unit, onSelfUpdate: () -> Unit) {
+    var confirmClear by remember { mutableStateOf(false) }
+    OrbitDialog(confirmClear, { confirmClear = false }) {
+        Text("清除本机项目记录？", fontSize = 20.sp)
+        Text("删除收藏、订阅、隐藏偏好与仓库关联，不卸载应用，不删除正在处理的下载任务。此操作不可恢复。", color = Muted, fontSize = 13.sp)
+        TvButton("取消", { confirmClear = false })
+        TvButton("确认清除记录", { onClearData(); confirmClear = false })
     }
-}
-
-@Composable private fun SettingsPage(apps: List<StoreApp>, onRefresh: () -> Unit, onClear: () -> Unit, onExternal: (String) -> Unit, onSelfUpdate: () -> Unit) {
     LazyColumn(contentPadding = PaddingValues(34.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         item { SectionTitle("简单，也尽在掌控", "Orbit 开源商店 · Android TV") }
-        item { SettingsBlock("目录与网络", "${apps.size} 个开发样本 · 原始文件来自 GitHub 官方发布") {
-            TvButton("刷新全部版本", onRefresh); TvButton("清理下载缓存", onClear)
+        item { val network by model.githubNetwork.collectAsStateWithLifecycle(); GitHubAccountPanel(model.githubAuth, model.deviceFlow, network, onExternal) }
+        item { SettingsBlock("本机管理与网络", "自动发现项目 · 只检查订阅和关联应用 · 原始文件来自 GitHub") {
+            TvButton("检查我的更新", onRefresh); TvButton("清理文件与图片缓存", onClear)
+            TvButton("恢复隐藏项目", onReset)
+        } }
+        item { SettingsBlock("使用偏好", "设置只保存在这台设备；清缓存不影响收藏和关联") {
+            TvButton(if (reduced) "动画：减少" else "动画：跟随系统", onMotion)
+            TvButton(if (automaticChecks) "自动检查：开" else "自动检查：关", onChecks)
+        } }
+        item { SettingsBlock("本机记录", "卸载 Orbit 后本机记录丢失；没有云同步") {
+            TvButton("清除本机项目记录", { confirmClear = true })
         } }
         item { SettingsBlock("关于 Orbit", "版本 ${BuildConfig.VERSION_NAME} · 独立开源项目，与 GitHub 无官方关联") {
+            TvButton("用户协议与风险告知", onAgreement)
+            TvButton("阅读组件开源许可", onNotices)
             TvButton("检查商店更新", onSelfUpdate)
             TvButton("项目主页与反馈", { onExternal("https://github.com/DurianLollipop/github-app-store") })
         } }
         item { Column(Modifier.background(Panel, RoundedCornerShape(20.dp)).padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("你的应用，留在你的设备。", color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Medium)
-            Text("无需账户。应用目录、下载任务和安装记录保存在本机。网络请求直接访问 GitHub 及项目图片来源，遵循相应服务的隐私政策。当前版本未接入广告和分析服务。", color = Muted, fontSize = 12.sp, lineHeight = 22.sp)
+            Text("游客可用，也可自愿授权 GitHub。应用目录、下载任务和安装记录保存在本机。网络请求直接访问 GitHub 及项目图片来源，遵循相应服务的隐私政策。当前版本未接入广告和分析服务。", color = Muted, fontSize = 12.sp, lineHeight = 22.sp)
             Text("开发预览：应用的 TV 真机兼容性仍待验证。历史记录以 GitHub 当前可用资产为准；商店更新需要项目发布同签名 APK。", color = Muted, fontSize = 11.sp, lineHeight = 20.sp)
         } }
     }

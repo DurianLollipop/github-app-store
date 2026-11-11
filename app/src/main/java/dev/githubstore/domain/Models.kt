@@ -19,6 +19,11 @@ data class StoreApp(
     val certificateSha256: Set<String> = emptySet(),
     val releases: List<AppRelease> = emptyList(),
     val checkedAt: Long = 0,
+    val githubId: Long = 0,
+    val stars: Long = 0,
+    val topics: List<String> = emptyList(),
+    val archived: Boolean = false,
+    val defaultBranch: String = "HEAD",
 ) {
     val sourceUrl get() = "https://github.com/$repository"
 }
@@ -44,11 +49,12 @@ data class ReleaseAsset(
     val versionCode: Long? = null,
     val minSdk: Int? = null,
     val enabled: Boolean = true,
+    val updatedAt: String = "",
 )
 
 enum class TaskStatus(val label: String) {
     QUEUED("等待下载"), DOWNLOADING("正在下载"), VERIFYING("正在校验"),
-    READY("等待安装"), WAITING_USER("等待系统确认"), INSTALLING("正在安装"),
+    READY("等待安装"), CHECKING_INSTALL("检查安装状态"), WAITING_USER("等待系统确认"), INSTALLING("正在安装"),
     INSTALLED("安装完成"), FAILED("操作失败"), CANCELLED("已取消"), INTERRUPTED("下载已中断")
 }
 
@@ -64,6 +70,12 @@ data class DownloadTask(
     val error: String? = null,
     val sessionId: Int? = null,
     val createdAt: Long = System.currentTimeMillis(),
+    val repository: String = "",
+    val localSha256: String? = null,
+    val inspected: InstalledApp? = null,
+    val sourceConfirmed: Boolean = false,
+    val installSucceeded: Boolean = false,
+    val prerelease: Boolean = false,
 ) {
     val progress: Float get() = if (asset.size > 0) (downloaded.toFloat() / asset.size).coerceIn(0f, 1f) else 0f
     val active get() = status in setOf(TaskStatus.QUEUED, TaskStatus.DOWNLOADING, TaskStatus.VERIFYING)
@@ -110,3 +122,5 @@ fun formatBytes(bytes: Long): String = when {
     bytes >= 1024 * 1024 -> "%.1f MB".format(java.util.Locale.ROOT, bytes / (1024.0 * 1024))
     else -> "%.0f KB".format(java.util.Locale.ROOT, bytes / 1024.0)
 }
+
+fun DownloadTask.matchesInstalled(actual: InstalledApp?): Boolean = installSucceeded && inspected != null && actual == inspected

@@ -23,9 +23,9 @@ import kotlinx.coroutines.launch
 
 @Composable internal fun GitHubSearchPage(state: GitHubSearchState, navigation: FocusRequester, input: FocusRequester,
     focus: MutableMap<String, FocusRequester>, onQuery: (String) -> Unit, onSubmit: () -> Unit,
-    onMore: () -> Unit, onSelect: (StoreApp) -> Unit) {
+    onMore: () -> Unit, onSelect: (StoreApp) -> Unit, returnToken: Int = 0) {
     val submit = remember { FocusRequester() }
-    val grid = rememberLazyGridState()
+    val grid = remember(returnToken) { LazyGridState() }
     val scope = rememberCoroutineScope()
     val keyboard = LocalSoftwareKeyboardController.current
     fun enterResults(): Boolean {
@@ -35,6 +35,12 @@ import kotlinx.coroutines.launch
         else scope.launch { grid.scrollToItem(0); withFrameNanos { }; focus[first.id]?.requestFocus() }
         return true
     }
+    val active = LocalPageActive.current
+    LaunchedEffect(returnToken, active) { if (active && returnToken > 0) {
+        grid.scrollToItem(0); withFrameNanos { }
+        val first = state.results.firstOrNull()
+        if (first != null) runCatching { focus[first.id]?.requestFocus() } else runCatching { input.requestFocus() }
+    } }
     fun search() { keyboard?.hide(); onSubmit() }
     Column(Modifier.fillMaxSize().padding(34.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         SectionTitle("搜索 GitHub", "搜索全部公开仓库，支持仓库名、关键词和 GitHub 搜索语法")
@@ -67,7 +73,7 @@ import kotlinx.coroutines.launch
         state.error?.let {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(it, color = Error, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                TvButton("重试", if (state.results.isEmpty()) onSubmit else onMore)
+                TvButton("重试", if (state.retryMore) onMore else onSubmit)
             }
         }
         if (state.results.isNotEmpty()) {

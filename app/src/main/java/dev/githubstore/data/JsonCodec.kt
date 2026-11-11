@@ -14,10 +14,11 @@ object JsonCodec {
         sha256 = j.optString("sha256").takeIf { AssetPolicy.validDigest(it) },
         abi = j.optString("abi", inferAbi(j.getString("name"))), versionCode = j.optionalLong("versionCode"),
         minSdk = j.optionalLong("minSdk")?.toInt(), enabled = j.optBoolean("enabled", true),
+        updatedAt = j.optString("updatedAt"),
     )
     fun asset(a: ReleaseAsset) = JSONObject().put("id", a.id).put("name", a.name).put("url", a.url)
         .put("size", a.size).put("sha256", a.sha256).put("abi", a.abi).put("versionCode", a.versionCode)
-        .put("minSdk", a.minSdk).put("enabled", a.enabled)
+        .put("minSdk", a.minSdk).put("enabled", a.enabled).put("updatedAt", a.updatedAt)
 
     fun readRelease(j: JSONObject) = AppRelease(j.getLong("id"), j.getString("tag"), j.optString("name", j.getString("tag")),
         j.optString("publishedAt"), j.optString("notes"), j.optBoolean("prerelease"), j.getString("url"),
@@ -37,14 +38,30 @@ object JsonCodec {
         tvStatus = j.optString("tvStatus", "尚未进行 TV 真机验证"),
         certificateSha256 = j.optJSONArray("certificateSha256")?.strings()?.map { it.lowercase() }?.toSet().orEmpty(),
         releases = j.optJSONArray("releases")?.objects()?.map(::readRelease).orEmpty(), checkedAt = j.optLong("checkedAt"),
+        githubId = j.optLong("githubId"), stars = j.optLong("stars"), topics = j.optJSONArray("topics")?.strings().orEmpty(),
+        archived = j.optBoolean("archived"), defaultBranch = j.optString("defaultBranch", "HEAD"),
     )
+
+    fun app(a: StoreApp): JSONObject = JSONObject().put("id", a.id).put("name", a.name).put("repository", a.repository)
+        .put("packageName", a.packageName).put("category", a.category).put("tagline", a.tagline).put("description", a.description)
+        .put("license", a.license).put("color", "%06x".format(a.color and 0xFFFFFF)).put("symbol", a.symbol)
+        .put("iconUrl", a.iconUrl).put("screenshots", JSONArray(a.screenshots)).put("mediaSource", a.mediaSource)
+        .put("readmeUrl", a.readmeUrl).put("tvStatus", a.tvStatus).put("certificateSha256", JSONArray(a.certificateSha256))
+        .put("releases", JSONArray(a.releases.map(::release))).put("checkedAt", a.checkedAt).put("githubId", a.githubId)
+        .put("stars", a.stars).put("topics", JSONArray(a.topics)).put("archived", a.archived).put("defaultBranch", a.defaultBranch)
+
+    fun installed(a: InstalledApp) = JSONObject().put("packageName", a.packageName).put("versionName", a.versionName)
+        .put("versionCode", a.versionCode).put("certificates", JSONArray(a.certificates))
+    fun readInstalled(j: JSONObject) = InstalledApp(j.getString("packageName"), j.getString("versionName"), j.getLong("versionCode"), j.getJSONArray("certificates").strings().toSet())
 
     fun task(t: DownloadTask) = JSONObject().put("id", t.id).put("appId", t.appId).put("appName", t.appName)
         .put("packageName", t.packageName).put("releaseTag", t.releaseTag).put("asset", asset(t.asset))
         .put("status", t.status.name).put("downloaded", t.downloaded).put("error", t.error)
-        .put("sessionId", t.sessionId).put("createdAt", t.createdAt)
+        .put("sessionId", t.sessionId).put("createdAt", t.createdAt).put("repository", t.repository)
+        .put("localSha256", t.localSha256).put("inspected", t.inspected?.let(::installed)).put("sourceConfirmed", t.sourceConfirmed).put("installSucceeded", t.installSucceeded).put("prerelease", t.prerelease)
     fun readTask(j: JSONObject) = DownloadTask(j.getString("id"), j.getString("appId"), j.getString("appName"),
         j.getString("packageName"), j.getString("releaseTag"), readAsset(j.getJSONObject("asset")),
         TaskStatus.valueOf(j.getString("status")), j.optLong("downloaded"), j.optString("error").takeIf(String::isNotBlank),
-        j.optionalLong("sessionId")?.toInt(), j.getLong("createdAt"))
+        j.optionalLong("sessionId")?.toInt(), j.getLong("createdAt"), j.optString("repository"),
+        j.optString("localSha256").takeIf { AssetPolicy.validDigest(it) }, j.optJSONObject("inspected")?.let(::readInstalled), j.optBoolean("sourceConfirmed"), j.optBoolean("installSucceeded"), j.optBoolean("prerelease"))
 }

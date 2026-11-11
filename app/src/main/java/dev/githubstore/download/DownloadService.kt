@@ -45,10 +45,10 @@ class DownloadService : Service() {
                     }
                     try { withContext(Dispatchers.IO) {
                         try {
-                            val app = store.catalog.find(task.appId) ?: error("应用已不在目录中")
+                            val app = store.taskApp(task) ?: error("来源记录缺失，请重新打开仓库后下载")
                             store.tasks.update(task.id) { if (it.status == TaskStatus.QUEUED) it.copy(status = TaskStatus.DOWNLOADING, error = null) else it }
                             if (store.tasks.find(task.id)?.status != TaskStatus.DOWNLOADING) return@withContext
-                            engine.download(app.repository, task.asset, store.tasks.partial(task.id), store.tasks.file(task.id),
+                            engine.download(task.repository.ifBlank { app.repository }, task.asset, store.tasks.partial(task.id), store.tasks.file(task.id),
                                 onProgress = { count ->
                                     if (store.tasks.find(task.id)?.status == TaskStatus.CANCELLED) { engine.cancel(); throw CancellationException("已取消") }
                                     store.tasks.update(task.id) { it.copy(downloaded = count) }
@@ -58,7 +58,16 @@ class DownloadService : Service() {
                                     store.tasks.update(task.id) { if (it.status == TaskStatus.DOWNLOADING) it.copy(status = TaskStatus.VERIFYING) else it }
                                 })
                             if (store.tasks.find(task.id)?.status == TaskStatus.CANCELLED) store.tasks.file(task.id).delete()
-                            else store.tasks.update(task.id) { it.copy(status = TaskStatus.READY) }
+                            else {
+                                // Unknown repository identity is read from the APK, never invented from README.
+                                val inspected = store.inspector.verify(app.copy(packageName = "", certificateSha256 = if (app.id == "orbit-store") app.certificateSha256 else emptySet()), task.asset, store.tasks.file(task.id))
+                                store.library.remember(app.copy(releases = app.releases.map { release -> release.copy(assets = release.assets.map { asset ->
+                                    if (asset.id == task.asset.id && asset.url == task.asset.url) asset.copy(versionCode = inspected.versionCode) else asset
+                                }) }))
+                                store.tasks.update(task.id) { it.copy(status = TaskStatus.READY, packageName = inspected.packageName,
+                                    repository = task.repository.ifBlank { app.repository }, inspected = inspected,
+                                    localSha256 = sha256(store.tasks.file(task.id)), sourceConfirmed = false) }
+                            }
                         } catch (cancelled: CancellationException) {
                             if (store.tasks.find(task.id)?.status != TaskStatus.CANCELLED)
                                 store.tasks.update(task.id) { it.copy(status = TaskStatus.INTERRUPTED,

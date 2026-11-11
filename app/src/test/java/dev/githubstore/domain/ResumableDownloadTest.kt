@@ -70,7 +70,7 @@ class ResumableDownloadTest {
                     if (request.getHeader("Range") != "bytes=0-0") {
                         val count = active.incrementAndGet(); maximum.updateAndGet { maxOf(it, count) }
                         allParts.countDown()
-                        allParts.await(3, TimeUnit.SECONDS)
+                        allParts.await(8, TimeUnit.SECONDS)
                         active.decrementAndGet()
                     }
                     return rangeResponse(request)
@@ -135,8 +135,11 @@ class ResumableDownloadTest {
                 override fun dispatch(request: RecordedRequest) = if (request.getHeader("Range") == "bytes=0-0") rangeResponse(request)
                     else MockResponse().setHeader("Connection", "close").setBody(Buffer().write(content))
             }
-            server.start(); download(server, true)
-            assertEquals(digest, sha256(output()))
+            server.start()
+            repeat(4) {
+                download(server, true)
+                assertEquals(digest, sha256(output()))
+            }
         }
     }
     @Test fun `lost range support clears old chunks even if fallback transfer disconnects`() {

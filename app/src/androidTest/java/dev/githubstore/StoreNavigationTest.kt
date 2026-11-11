@@ -7,7 +7,8 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
-import dev.githubstore.data.GitHubDiscovery
+import dev.githubstore.data.*
+import androidx.lifecycle.ViewModelProvider
 import dev.githubstore.data.RepositoryPage
 import dev.githubstore.domain.StoreApp
 import kotlinx.coroutines.delay
@@ -22,24 +23,36 @@ import org.junit.runner.RunWith
 class StoreNavigationTest {
     @get:Rule val rule = createAndroidComposeRule<MainActivity>()
 
+    private var failSearch = false
     private lateinit var original: GitHubDiscovery
+    private lateinit var originalDiscovery: DiscoveryRepository
     private val store get() = rule.activity.application as StoreApplication
     @Before fun fakeGitHub() {
         original = store.github
+        originalDiscovery = store.discovery
+        store.discovery = object : DiscoveryRepository(store, { store.github }, store.client) {
+            override fun cached(mode: DiscoveryMode, sort: HotSort, period: HotPeriod) = DiscoverySnapshot(store.catalog.apps.value.filter { it.id != "orbit-store" }.map { app -> DiscoveryItem(if (app.releases.isNotEmpty()) app else app.copy(releases = listOf(dev.githubstore.domain.AppRelease(100, "fixture", "fixture", "", "", false, "", listOf(dev.githubstore.domain.ReleaseAsset(100, "fixture.apk", "https://github.com/fixture/app/releases/download/v1/fixture.apk", 100, null)))))) }, System.currentTimeMillis())
+            override suspend fun load(mode: DiscoveryMode, sort: HotSort, period: HotPeriod, force: Boolean, onPartial: (DiscoverySnapshot) -> Unit) = cached(mode, sort, period)
+        }
         store.github = object : GitHubDiscovery(store.client) {
             override suspend fun search(query: String, page: Int): RepositoryPage {
                 delay(30)
+                if (failSearch) throw GitHubRateLimitException(System.currentTimeMillis() + 60_000, "GitHub 额度已用完")
                 val external = store.catalog.apps.value.first().copy(id = "github-99999", name = "OutsideCatalog",
                     repository = "author/OutsideCatalog", packageName = "", certificateSha256 = emptySet(), releases = emptyList())
+                if (query == "many") return RepositoryPage((0..39).map { external.copy(id = "multi-$it", name = "Repo $it", repository = "fixture/repo$it") }, 40, false)
                 if (query == "outside") return RepositoryPage(listOf(external), 1, false)
                 if (query == "pages") return RepositoryPage(listOf(external.copy(id = "github-$page", name = "Repo$page")), 2, page == 1)
                 val result = store.catalog.apps.value.filter { it.id != "orbit-store" && it.name.contains(query, true) }
                 return RepositoryPage(result, result.size, false)
             }
+            override suspend fun repository(name: String) = store.catalog.apps.value.firstOrNull { it.repository.equals(name, true) } ?: store.catalog.apps.value.first().copy(name = name.substringAfter('/'), repository = name, packageName = "", certificateSha256 = emptySet(), releases = emptyList())
             override suspend fun details(app: StoreApp) = app.copy(checkedAt = System.currentTimeMillis())
         }
+        rule.runOnUiThread { ViewModelProvider(rule.activity)[StoreViewModel::class.java].refreshHome() }
+        rule.waitUntil(5000) { rule.onAllNodesWithTag("app-tile-jellyfin-tv").fetchSemanticsNodes().isNotEmpty() }
     }
-    @After fun restoreGitHub() { store.github = original }
+    @After fun restoreGitHub() { store.github = original; store.discovery = originalDiscovery }
     private fun awaitResult(name: String) {
         rule.waitUntil(5000) { rule.onAllNodes(hasText(name) and hasClickAction() and !hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
     }
@@ -76,15 +89,27 @@ class StoreNavigationTest {
         rule.onRoot().performKeyInput {
             pressKey(Key.DirectionDown)
         }
-        rule.onNodeWithTag("app-tile-jellyfin-tv").assertIsFocused()
+        val firstId = ViewModelProvider(rule.activity)[StoreViewModel::class.java].home.value.items.first().app.id
+        val lastId = ViewModelProvider(rule.activity)[StoreViewModel::class.java].home.value.items.last().app.id
+        rule.onNodeWithTag("app-tile-$firstId").assertIsFocused()
         rule.onRoot().performKeyInput { repeat(4) { pressKey(Key.DirectionRight) } }
-        rule.onNodeWithTag("app-tile-material-files").assertIsFocused().assertIsDisplayed()
+        rule.onNodeWithTag("app-tile-$lastId").assertIsFocused().assertIsDisplayed()
         rule.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
-        rule.onNodeWithTag("app-tile-material-files").assertIsFocused()
+        rule.onNodeWithTag("app-tile-$lastId").assertIsFocused()
         rule.onRoot().performKeyInput { pressKey(Key.DirectionUp) }
-        rule.onNodeWithTag("nav-Discover").assertIsFocused()
+        rule.onNodeWithTag("discover-mode-PERSONAL").assertIsFocused()
         rule.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
-        rule.onNodeWithTag("app-tile-material-files").assertIsFocused()
+        rule.onNodeWithTag("app-tile-$lastId").assertIsFocused()
+    }
+
+    @Test fun rateLimitedRefreshRetainsSameQueryResults() {
+        rule.onNodeWithTag("nav-Search").performClick()
+        rule.onNode(hasSetTextAction()).performTextInput("outside")
+        awaitResult("OutsideCatalog")
+        rule.runOnUiThread { failSearch = true; ViewModelProvider(rule.activity)[StoreViewModel::class.java].submitSearch() }
+        rule.waitUntil(5000) { ViewModelProvider(rule.activity)[StoreViewModel::class.java].search.value.error?.contains("已保留此前结果") == true }
+        rule.onNode(hasText("OutsideCatalog") and hasClickAction()).assertIsDisplayed()
+        rule.onNodeWithTag("github-search-input").assertTextContains("outside")
     }
 
     @Test fun searchFiltersCatalogAndHandlesNoResults() {
@@ -168,6 +193,41 @@ class StoreNavigationTest {
         awaitResult("Repo2")
         rule.onAllNodes(hasText("Repo1") and hasClickAction()).assertCountEquals(1)
         rule.onAllNodes(hasText("Repo2") and hasClickAction()).assertCountEquals(1)
+    }
+
+    @Test fun returningFromDeepSearchResultResetsToTopWithoutClearingQueryOrResults() {
+        rule.onNodeWithTag("nav-Search").performClick()
+        rule.onNodeWithTag("github-search-input").performTextInput("many")
+        awaitResult("Repo 0")
+        rule.onNodeWithTag("github-search-results").performScrollToIndex(35)
+        rule.onNodeWithTag("search-repo-multi-35").performClick()
+        rule.onNodeWithText("官方仓库").assertIsDisplayed()
+        UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
+        rule.waitForIdle()
+        rule.onNodeWithTag("github-search-input").assertTextContains("many")
+        rule.onNodeWithTag("search-repo-multi-0").assertIsDisplayed().assertIsFocused()
+        rule.onNodeWithText("GitHub · 已加载 40 / 40 个仓库").assertIsDisplayed()
+    }
+
+    @Test fun submittingRepositoryPathOpensDetailWithoutAnotherCardClick() {
+        rule.onNodeWithTag("nav-Search").performClick()
+        rule.onNodeWithTag("github-search-input").performTextInput("truefedex/tv-bro")
+        rule.onNodeWithTag("github-search-input").performImeAction()
+        rule.waitUntil(5000) { rule.onAllNodesWithText("官方仓库").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("TV Bro").assertIsDisplayed()
+        UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
+        rule.onNodeWithTag("github-search-input").assertTextContains("truefedex/tv-bro")
+    }
+
+    @Test fun decliningAgreementDoesNotEnqueueDownload() {
+        rule.activity.getSharedPreferences("user-agreement", 0).edit().clear().commit()
+        val before = store.tasks.tasks.value.size
+        rule.onNodeWithTag("app-tile-jellyfin-tv").performClick()
+        rule.waitUntil(5000) { rule.onAllNodes(hasText("下载 · 20.9 MB")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag("detail-primary-download").performClick()
+        rule.onNodeWithTag("agreement-decline").assertIsDisplayed().performClick()
+        org.junit.Assert.assertEquals(before, store.tasks.tasks.value.size)
+        org.junit.Assert.assertFalse(store.agreement.accepted)
     }
 
     @Test fun downloadsHasHonestEmptyState() {

@@ -20,16 +20,31 @@ class InstallManager(private val store: StoreApplication) {
         val task = store.tasks.find(request.id) ?: error("下载任务已不存在")
         check(task.status in setOf(TaskStatus.READY, TaskStatus.WAITING_USER)) { "系统正在处理此任务，请等待安装结果" }
         check(store.tasks.tasks.value.none { it.id != task.id && it.status in setOf(TaskStatus.INSTALLING, TaskStatus.WAITING_USER) }) { "请先处理另一个应用的系统安装确认" }
-        val app = store.catalog.find(task.appId) ?: error("应用已不在目录中")
-        check(System.currentTimeMillis() - app.checkedAt in 0..TimeUnit.HOURS.toMillis(24)) { "版本检查已超过 24 小时，请先联网刷新此应用" }
-        check(app.releases.flatMap { it.assets }.any { it.enabled && it.url == task.asset.url && it.sha256 == task.asset.sha256 }) { "安装包已撤回或发生变化，请刷新后重试" }
+        check(store.agreement.accepted) { "请先阅读并同意用户协议" }
+        val app = store.taskApp(task) ?: error("仓库来源记录缺失，请重新检查")
+        check(task.sourceConfirmed && task.inspected != null) { "请先确认此安装包的来源与身份" }
+        store.tasks.update(task.id) { it.copy(status = TaskStatus.CHECKING_INSTALL, installSucceeded = false, error = null) }
+        val remote = try { store.github.asset(app.repository, task.asset.id) }
+        catch (c: kotlinx.coroutines.CancellationException) { throw c }
+        catch (e: dev.githubstore.data.GitHubApiException) { if (e.status == 404) error("上游安装包已移除，已停止安装") else null }
+        catch (_: java.io.IOException) { null } // Complete locally checked files remain usable offline.
+        if (remote != null) {
+            check(remote.size == task.asset.size && remote.url == task.asset.url &&
+                (task.asset.updatedAt.isBlank() || remote.updatedAt == task.asset.updatedAt)) { "上游安装包发生变化，请重新下载" }
+            remote.sha256?.let { check(it.equals(task.localSha256, true)) { "上游摘要与本地文件不同，请重新下载" } }
+        }
+        check(task.sourceConfirmed && task.inspected != null) { "请先确认此安装包的来源与身份" }
+        check(store.tasks.find(task.id)?.status == TaskStatus.CHECKING_INSTALL) { "安装检查已取消" }
         val file = store.tasks.file(task.id)
-        store.inspector.verify(app, task.asset, file)
+        check(task.localSha256 != null && dev.githubstore.download.sha256(file) == task.localSha256) { "本地文件发生变化，请重新下载检查" }
+        val identity = store.inspector.verify(app.copy(packageName = task.inspected.packageName,
+            certificateSha256 = task.inspected.certificates), task.asset, file)
+        check(identity == task.inspected) { "包身份发生变化，请重新检查" }
         check(store.packageManager.canRequestPackageInstalls()) { "请先允许 Orbit 安装应用" }
         val installer = store.packageManager.packageInstaller
         task.sessionId?.let { runCatching { installer.abandonSession(it) } }
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
-            setAppPackageName(app.packageName); setSize(file.length())
+            setAppPackageName(identity.packageName); setSize(file.length())
             if (Build.VERSION.SDK_INT >= 31) setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)
         }
         val sessionId = installer.createSession(params)

@@ -1,0 +1,51 @@
+{
+  "version": "0.3.0-dev",
+  "versionCode": 6,
+  "date": "2026-11-11",
+  "apkFile": "app/build/outputs/apk/debug/orbit-tv-0.3.0-dev.apk",
+  "apkBytes": 20938427,
+  "apkSha256": "46f4b1c02c5c9418e68798c03bb7843f4bb171873e554ee2cfc5a321126e02ae",
+  "unitTests": 67,
+  "unitFailures": 0,
+  "unitErrors": 0,
+  "readmeMetadataTests": 16,
+  "nativeNavigationTests": 38,
+  "nativeNavigationFailures": 0,
+  "reducedMotionNavigationTests": 38,
+  "reducedMotionNavigationFailures": 0,
+  "device": "Android TV API 33 ARM64 emulator; 1920x1080 @320dpi normal, 1280x720 @213dpi reduced motion",
+  "lintErrors": 0,
+  "fixtureInstallTests": 1,
+  "fixtureInstallScope": "本仓库约6KiB测试APK：首次系统确认安装、同签名v1→v2升级、关联保存、降级阻止；测试结束卸载夹具",
+  "physicalDeviceValidated": false,
+  "performanceScope": "模拟器正文解析与缓存测量，不包含网络、图片解码或首帧；未测实体电视FPS或低内存硬件",
+  "apkGrowthFrom022Bytes": 294988,
+  "bundledOfficialIcons": 0,
+  "bundledApks": 0,
+  "runtimeBackendRequired": false,
+  "productionDiscovery": "客户端自动查询，非固定五款目录；当前结果受预算限制",
+  "growthSourceValidation": "真实匿名Star History接口200；Trending周榜HTML200，按来源期间处理，缺失不冒充总量",
+  "thirdPartyLiveInstallRepeated": false,
+  "readmeImplementation": "CommonMark0.24.0/GFM表格+jsoup1.21.2，Compose分块懒渲染，真实语言文件菜单，无WebView或翻译SDK",
+  "details": "docs/tool-iteration-validation.md",
+  "readmeParseSample": {
+    "fixtureBytes": 114660,
+    "parseMs": 189.808709,
+    "cacheMs": 0.689791,
+    "scope": "本轮API33模拟器样本，仅解析和缓存，不是首帧/FPS"
+  },
+  "liveNetworkDiagnostic": {
+    "explicitTestCount": 1,
+    "defaultHTTP": 200,
+    "http1": 200,
+    "tls12": 200,
+    "githubAPI": 200,
+    "note": "此前模拟器暂时TLS握手中断，后续恢复；未修改应用TLS或使用内置代理"
+  },
+  "liveDiscoveryScreenshot": {
+    "file": "docs/screenshots/tool-global-hot.png",
+    "weeklyTrendingCandidates": 14,
+    "partialMetadataRateLimited": true,
+    "note": "真实趋势与期间新增Star已显示；部分资料遇到匿名限流，使用标明来源的作者头像或字母占位，未全量验证README图标"
+  }
+}

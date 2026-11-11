@@ -15,6 +15,7 @@ import java.security.MessageDigest
 import java.util.Properties
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 /** Four bounded range connections per APK; task scheduling remains serial. */
 class DownloadEngine(private val client: OkHttpClient, private val strictOrigin: Boolean = true,
@@ -27,7 +28,7 @@ class DownloadEngine(private val client: OkHttpClient, private val strictOrigin:
     suspend fun download(repository: String, asset: ReleaseAsset, partial: File, destination: File,
                          onProgress: (Long) -> Unit, onVerifying: () -> Unit) = withContext(Dispatchers.IO) {
         require(asset.enabled) { "这个安装包已停止分发" }
-        require(AssetPolicy.validDigest(asset.sha256)) { "此文件缺少 SHA-256 校验信息，暂不能下载。请查看官方发布页。" }
+        require(asset.sha256 == null || AssetPolicy.validDigest(asset.sha256)) { "上游文件摘要格式无效" }
         require(asset.size in 1..2_147_483_648L) { "安装包大小无效或超过首版支持范围" }
         val url = asset.url.toHttpUrl()
         if (strictOrigin) require(url.scheme == "https" && url.host == "github.com" &&
@@ -41,7 +42,7 @@ class DownloadEngine(private val client: OkHttpClient, private val strictOrigin:
         }.build()
         val work = checkpointDir(partial)
         val metadata = File(work, "identity.properties")
-        val identity = "${asset.url}\n${asset.size}\n${asset.sha256!!.lowercase()}"
+        val identity = "${asset.id}\n${asset.url}\n${asset.size}\n${asset.sha256?.lowercase().orEmpty()}\n${asset.updatedAt}"
         val saved = Properties().apply { if (metadata.isFile) runCatching { metadata.inputStream().use { load(it) } } }
         if (saved.getProperty("identity") != identity) { discard(partial); saved.clear() }
         work.mkdirs()
@@ -96,16 +97,21 @@ class DownloadEngine(private val client: OkHttpClient, private val strictOrigin:
         }
         suspend fun sequential() {
             var offset = partial.length()
+            if (asset.sha256 == null && saved.getProperty("validator").isNullOrBlank() && offset > 0) { partial.delete(); offset = 0 }
             if (offset > asset.size) { partial.delete(); offset = 0 }
             report(offset, true)
             if (offset == asset.size) return
             response(request(if (offset > 0) offset else null, validator = saved.getProperty("validator"))) { res ->
                 checkStatus(res)
-                if (res.code == 206) validateRange(res, offset, asset.size - 1, asset.size)
+                if (res.code == 206) {
+                    validateRange(res, offset, asset.size - 1, asset.size)
+                    if (asset.sha256 == null && offset > 0 && res.header("ETag") != saved.getProperty("validator"))
+                        throw InvalidPayload("续传文件标识发生变化，请重新下载")
+                }
                 else if (res.code == 200) { offset = 0; report(0, true) }
                 else throw InvalidPayload("下载服务器未返回完整文件")
                 saved.setProperty("mode", "single")
-                val nextValidator = validator(res)
+                val nextValidator = if (asset.sha256 == null) res.header("ETag")?.takeIf { it.startsWith('"') && it.endsWith('"') } else validator(res)
                 if (nextValidator != null) saved.setProperty("validator", nextValidator) else saved.remove("validator")
                 saveIdentity()
                 copyBody(res, partial, offset > 0, asset.size - offset) { count -> offset += count; report(offset) }
@@ -121,12 +127,12 @@ class DownloadEngine(private val client: OkHttpClient, private val strictOrigin:
                     // Consume and validate the probe, never retain it as a part.
                     val probeValid = probe.body?.byteStream()?.use { it.read() >= 0 && it.read() == -1 } ?: false
                     if (!probeValid) throw InvalidPayload("下载服务器返回了错误的分段内容")
-                    currentValidator = validator(probe)
+                    currentValidator = if (asset.sha256 == null) probe.header("ETag")?.takeIf { it.startsWith('"') && it.endsWith('"') } else validator(probe)
                     supported = true
                 }
             }
-            if (!supported) return false
-            if (saved.getProperty("mode") != "parallel" || saved.getProperty("validator") != currentValidator) {
+            if (!supported || (asset.sha256 == null && currentValidator == null)) return false
+            if ((asset.sha256 == null && currentValidator == null) || saved.getProperty("mode") != "parallel" || saved.getProperty("validator") != currentValidator) {
                 work.listFiles()?.filter { it.name.endsWith(".chunk") }?.forEach { it.delete() }
             }
             saved.setProperty("mode", "parallel")
@@ -141,7 +147,8 @@ class DownloadEngine(private val client: OkHttpClient, private val strictOrigin:
             }
             val total = AtomicLong(ranges.sumOf { it.third.length() })
             report(total.get(), true)
-            coroutineScope {
+            val firstFailure = AtomicReference<Throwable?>(null)
+            try { coroutineScope {
                 ranges.map { (start, end, file) -> async(Dispatchers.IO) {
                     val offset = start + file.length()
                     if (offset > end) return@async
@@ -150,10 +157,20 @@ class DownloadEngine(private val client: OkHttpClient, private val strictOrigin:
                             checkStatus(res)
                             if (res.code == 200) throw RangeIgnored()
                             validateRange(res, offset, end, asset.size)
+                            if (asset.sha256 == null && res.header("ETag") != currentValidator)
+                                throw InvalidPayload("分段文件标识发生变化，请重新下载")
                             copyBody(res, file, file.length() > 0, end - offset + 1) { count -> report(total.addAndGet(count.toLong())) }
                         }
-                    } catch (error: Throwable) { calls.forEach { it.cancel() }; throw error }
+                    } catch (error: Throwable) {
+                        // Preserve the initiating failure before cancelling siblings. Otherwise
+                        // a cancelled socket can hide RangeIgnored and prevent safe fallback.
+                        firstFailure.compareAndSet(null, error)
+                        calls.forEach { it.cancel() }; throw error
+                    }
                 } }.awaitAll()
+            } } catch (error: Throwable) {
+                currentCoroutineContext().ensureActive()
+                throw firstFailure.get() ?: error
             }
             FileOutputStream(partial).use { output ->
                 for ((_, _, file) in ranges) {
@@ -179,7 +196,7 @@ class DownloadEngine(private val client: OkHttpClient, private val strictOrigin:
             checkCancelled(); currentCoroutineContext().ensureActive()
             report(asset.size, true)
             onVerifying()
-            if (partial.length() != asset.size || !sha256(partial).equals(asset.sha256, ignoreCase = true))
+            if (partial.length() != asset.size || (asset.sha256 != null && !sha256(partial).equals(asset.sha256, ignoreCase = true)))
                 throw InvalidPayload("文件校验失败，已阻止安装。请刷新版本后重试。")
             checkCancelled(); currentCoroutineContext().ensureActive()
             check(partial.renameTo(destination)) { "无法保存安装包，请检查存储空间" }
