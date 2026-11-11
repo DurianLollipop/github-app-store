@@ -1,0 +1,159 @@
+name: Android TV - Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '已有标签，例如 v0.3.1 或 v0.3.2-rc.1'
+        type: string
+        required: true
+      draft:
+        description: '创建草稿，确认后在 Releases 页面发布'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+concurrency:
+  group: orbit-release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    env:
+      GH_REPO: ${{ github.repository }}
+      ORG_GRADLE_PROJECT_orbitGitHubClientId: ${{ vars.ORBIT_GITHUB_CLIENT_ID }}
+      ORBIT_BUILD_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Validate requested tag
+        id: tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[1-9][0-9]*)?$ ]]; then
+            echo '::error::标签必须为 v0.3.1 或 v0.3.2-rc.1 这样的版本'
+            exit 1
+          fi
+          printf 'tag=%s\n' "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check existing releases and get previous identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GH_REPO/releases?per_page=100" > "$RUNNER_TEMP/orbit-releases.json"
+          previous_asset_url="$(python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          releases = json.loads((Path(os.environ['RUNNER_TEMP']) / 'orbit-releases.json').read_text())
+          if any(r['tag_name'] == os.environ['RELEASE_TAG'] for r in releases):
+              raise SystemExit('此标签已有 Release 或草稿，拒绝覆盖；请先在 GitHub 确认处理')
+          assets = [a for r in releases if not r['draft'] for a in r['assets'] if a['name'] == 'release-metadata.json']
+          print(assets[0]['url'] if assets else '')
+          PY
+          )"
+          if [[ -n "$previous_asset_url" ]]; then
+            gh api -H 'Accept: application/octet-stream' "$previous_asset_url" > "$RUNNER_TEMP/orbit-previous.json"
+          fi
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+      - name: Validate source version against tag
+        id: version
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          ./gradlew :app:writeCiMetadata --no-daemon
+          python3 scripts/ci_package.py version --tag "$RELEASE_TAG" --previous "$RUNNER_TEMP/orbit-previous.json"
+      - name: Validate Python helpers
+        run: |
+          python3 scripts/catalog.py validate
+          python3 -m unittest discover -s scripts/tests -v
+      - name: Build and verify signed release APK
+        env:
+          ORBIT_KEYSTORE_BASE64: ${{ secrets.ORBIT_KEYSTORE_BASE64 }}
+          ORBIT_KEYSTORE_PASSWORD: ${{ secrets.ORBIT_KEYSTORE_PASSWORD }}
+          ORBIT_KEY_ALIAS: ${{ secrets.ORBIT_KEY_ALIAS }}
+          ORBIT_KEY_PASSWORD: ${{ secrets.ORBIT_KEY_PASSWORD }}
+          ORBIT_RELEASE_CERT_SHA256: ${{ vars.ORBIT_RELEASE_CERT_SHA256 }}
+          ORBIT_REQUIRE_RELEASE_SIGNING: 'true'
+          ORG_GRADLE_PROJECT_orbitVersionName: ${{ steps.version.outputs.version }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          for name in ORBIT_KEYSTORE_BASE64 ORBIT_KEYSTORE_PASSWORD ORBIT_KEY_ALIAS ORBIT_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::缺少仓库 Secret: $name"
+              exit 1
+            fi
+          done
+          export ORBIT_KEYSTORE_FILE="$RUNNER_TEMP/orbit-release.keystore"
+          trap 'rm -f "$ORBIT_KEYSTORE_FILE"' EXIT
+          umask 077
+          printf '%s' "$ORBIT_KEYSTORE_BASE64" | base64 --decode > "$ORBIT_KEYSTORE_FILE"
+          ./gradlew :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease --no-daemon --stacktrace
+          python3 scripts/ci_package.py release --tag "$RELEASE_TAG" --previous "$RUNNER_TEMP/orbit-previous.json"
+      - name: Preserve signed APK and R8 mapping
+        uses: actions/upload-artifact@v7
+        with:
+          name: orbit-release-${{ steps.tag.outputs.tag }}
+          path: |
+            build/artifacts/
+            app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+          DRAFT: ${{ github.event_name == 'workflow_dispatch' && inputs.draft }}
+        run: |
+          set -euo pipefail
+          remote_commit="$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)"
+          if [[ "$remote_commit" != "$(git rev-parse HEAD)" ]]; then
+            echo '::error::标签在构建期间发生变化，拒绝发布'
+            exit 1
+          fi
+          args=("$RELEASE_TAG" build/artifacts/*.apk build/artifacts/SHA256SUMS build/artifacts/release-metadata.json
+                --verify-tag --generate-notes --title "Orbit $RELEASE_VERSION")
+          if [[ "$PRERELEASE" == 'true' ]]; then args+=(--prerelease --latest=false); fi
+          if [[ "$DRAFT" == 'true' ]]; then args+=(--draft); fi
+          gh release create "${args[@]}"
+      - name: Clean signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/orbit-release.keystore"
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: orbit-release-reports-${{ steps.tag.outputs.tag }}
+          path: |
+            app/build/reports/
+            app/build/test-results/
+          if-no-files-found: warn
+          retention-days: 14

@@ -73,7 +73,7 @@ adb shell am start -n dev.githubstore/.MainActivity
 
 当前工作区安装的 SDK、Gradle 和模拟器位于 `.tooling/`，已排除在 Git 之外。`local.properties`、下载缓存和调试密钥也不提交。
 
-目前尚未发布正式安装包。可以从源码构建；GitHub Actions 成功运行后，也可在对应工作流的 `orbit-android-tv` 构建产物中获取开发 APK。
+目前尚未发布正式安装包。可以从源码构建；GitHub Actions 的 **Android TV - Build APK** 成功后，在 `orbit-android-tv-debug` 产物中获取开发 APK。新增 **Android TV - Release** 工作流，支持版本标签和手动发布，自动生成签名 APK、校验和与发布说明。首次使用需配置签名 Secrets，详见[构建与发布配置](docs/github-actions.md)。
 
 ## 验证
 
@@ -82,7 +82,7 @@ adb shell am start -n dev.githubstore/.MainActivity
 | 验证项 | 本轮范围 |
 | --- | --- |
 | Android 单元测试 | 80 项，含请求额度 / 缓存 / 授权协议，以及 Markdown、排序、续传与安装门槛 |
-| Python 测试 | 16 项历史目录 / README 提取夹具 |
+| Python 测试 | 22 项，含 16 项历史目录 / README 提取夹具及 6 项 CI 版本与打包检查 |
 | 原生 UI | 1080p 正常动画、720p / 减少动画各 41 项通过；最终请求取消修复后另过 12 项重点复核 |
 | 系统安装 | 前次工具化迭代的自有 APK 安装升级夹具通过；本次补丁未重复安装第三方软件 |
 | 构建 / Lint | 开发 APK 与原生测试包，Lint 无 Error / Fatal |
